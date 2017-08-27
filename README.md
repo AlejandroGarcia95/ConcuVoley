@@ -16,7 +16,7 @@ Propongo seguir más o menos el siguiente flujo de trabajo para este TP.
 # Proposiciones
 
 1. Los jugadores tienen un atributo numérico _skill_ y la duración de un partido es función de este parámetro.
-2. En lugar de hacer que la marea suba o baje al apretar teclitas o de forma random, se me ocurre que se puede guardar registro del paso del tiempo, y tener un archivo de texto secundario en el que se especifique cuándo sube o baja la marea a partir de timestamps. De esa manera, se puede controlar perfectamente la marea sin tener que apretar teclas durante la ejecución del programa, y si se quiere que sea random, se puede generar ese archivo de forma random y ya.
+2. En lugar de hacer que la marea suba o baje al apretar teclitas ~~o de forma random~~, se me ocurre que se puede guardar registro del paso del tiempo, y tener un archivo de texto secundario en el que se especifique cuándo sube o baja la marea a partir de timestamps. De esa manera, se puede controlar perfectamente la marea sin tener que apretar teclas durante la ejecución del programa, y si se quiere que sea random, se puede ~~generar ese archivo de forma random y ya~~ indicar con un flag en el archivo de configuración que así sea.
 
 # Hipótesis
 
