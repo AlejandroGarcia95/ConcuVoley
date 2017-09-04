@@ -8,6 +8,8 @@
 #define NAME_MAX_LENGTH 50
 
 #define SKILL_MAX 100
+#define SKILL_AVG 80
+#define DELTA_SKILL 15
 
 /* Player structure used to model a player of
  * the tournament. For the time being, each
@@ -38,6 +40,10 @@ size_t player_get_skill(player_t* player);
  * received player. If player is NULL, let it
  * return 0 by the time being.*/
 size_t player_get_matches(player_t* player);
+
+/* Returns the skill of the received player.
+ * If player is NULL, returns NULL.*/
+char* player_get_name(player_t* player);
 
 /*Increase by 1 the amount of matches played.*/
 void player_increase_matches_played(player_t* player);

@@ -12,6 +12,10 @@ all: $(ARCHIVOS) $(PROGRAMA).o
 clean:
 	rm -f $(PROGRAMA) *.o
 
+valgrind: $(ARCHIVOS) $(PROGRAMA).o
+	gcc -o $(PROGRAMA) $^
+	valgrind --leak-check=yes ./$(PROGRAMA)
+
 .PHONY: clean
 
 
