@@ -2,7 +2,10 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
+#include <time.h>
 #include "log.h"
+#include "player.h"
+#include "match.h"
 
 #define LOG_ROUTE "ElLog.txt"
 #define CONF_ROUTE "conf.txt"
@@ -58,6 +61,7 @@ bool read_conf_file(struct conf* sc){
 			parsed_amount++;
 			}
 		}
+	fclose(pf);	
 	// Check all fields were correctly parsed
 	int expected_amount = sizeof(struct conf) / sizeof(size_t);
 	if(expected_amount == parsed_amount)
@@ -69,7 +73,9 @@ bool read_conf_file(struct conf* sc){
 
 
 int main(int argc, char **argv){
+	srand(time(NULL));
 	
+	// Test log levels
 	log_t* log = log_open(LOG_ROUTE, false);
 	log_write(log, "Testing: none", NONE_L);
 	log_write(log, "Testing: warning", WARNING_L);
@@ -77,6 +83,9 @@ int main(int argc, char **argv){
 	log_write(log, "Testing: info", INFO_L);
 	log_write(log, "", NONE_L); // empty line
 	
+	log_write(log, "--------------------------------------", NONE_L);
+	
+	// Read conf file
 	struct conf sc;
 	bool parse_ok = read_conf_file(&sc);
 	if(parse_ok){ // Write parsed args to log
@@ -91,6 +100,54 @@ int main(int argc, char **argv){
 		sprintf(aux_value, "%d", sc.matches);
 		log_write(log, aux_value, NONE_L);
 		}
+		
+	log_write(log, "--------------------------------------", NONE_L);	
+	
+	// Create 10 players, check fields and delete them	
+	int i;
+	for(i = 0; i < 10; i++){
+		char plyr_name[15], plyr_skill[10], plyr_matches[10];
+		sprintf(plyr_name, "Player%d", i);
+		player_t* player_act = player_create(plyr_name);
+		// Check and log_write fields
+		sprintf(plyr_skill, "%d", player_get_skill(player_act));
+		sprintf(plyr_matches, "%d", player_get_matches(player_act));
+		
+		log_write(log, "Created new player. Name:", NONE_L);
+		log_write(log, player_get_name(player_act), NONE_L);
+		log_write(log, "Skill:", NONE_L);
+		log_write(log, plyr_skill, NONE_L);
+		log_write(log, "Matches played:", NONE_L);
+		log_write(log, plyr_matches, NONE_L);
+		player_destroy(player_act);
+		}	
+		
+	log_write(log, "--------------------------------------", NONE_L);
+	
+	// Create 2 players and make them play a match
+	player_t* p1 = player_create("Player 1");
+	player_t* p2 = player_create("Player 2");
+	match_t* match = match_create(p1, p2);
+	
+	char msg_log[100];
+	sprintf(msg_log, "Player 1 skill: %d", player_get_skill(p1));
+	log_write(log, msg_log, NONE_L);
+	sprintf(msg_log, "Player 2 skill: %d", player_get_skill(p2));
+	log_write(log, msg_log, NONE_L);
+	log_write(log, "Let the match begin!", NONE_L);
+	match_play(match);
+	log_write(log, "Match ended. Results are...", NONE_L);
+	sprintf(msg_log, "Player 1: %d", match_get_home_sets(match));
+	log_write(log, msg_log, NONE_L);
+	sprintf(msg_log, "Player 2: %d", match_get_away_sets(match));
+	log_write(log, msg_log, NONE_L);
+	
+	
+	player_destroy(p1);
+	player_destroy(p2);
+	match_destroy(match);
+		
+		
 	log_close(log);
 	return 0;
 }

@@ -45,4 +45,10 @@ void match_play(match_t* match);
 
 // TODO: Create a function to determinate player's scores
 
+/* Returns the sets won by home and away 
+ * playes. If match is NULL, let them both 
+ * return 0 for the time being.*/
+size_t match_get_home_sets(match_t* match);
+size_t match_get_away_sets(match_t* match);
+
 #endif
