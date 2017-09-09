@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <stdarg.h>
 
 /* Log structure used to represent the log. 
  * Shall we add more fields to it? */
@@ -23,9 +24,11 @@ log_t* log_open(char* route, bool append);
 void log_close(log_t* log);
 
 /* Write string msg to the received log file, using the log
- * level specified for the writing. If successful, returns
+ * level specified for the writing. Works exactly like printf
+ * meaning that you can pass msg as a formated string, and then
+ * specify list of arguments. If successful, returns
  * the total of characters written. Otherwise, a negative
  * number is returned.*/
-int log_write(log_t* log, char* msg, log_level lvl);
+int log_write(log_t* log, log_level lvl, char* msg, ... );
 
 #endif

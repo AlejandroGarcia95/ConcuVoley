@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <stdarg.h>
 #include "log.h"
 
 /* Opens file at route and dynamically creates a log with it. 
@@ -32,10 +33,17 @@ void log_close(log_t* log){
  * level specified for the writing. If successful, returns
  * the total of characters written. Otherwise, a negative
  * number is returned.*/
-int log_write(log_t* log, char* msg, log_level lvl){
+int log_write(log_t* log, log_level lvl, char* msg, ... ){
 	if(!(log && log->log_file)) return -1;
-	if(lvl == NONE_L)
-		return fprintf(log->log_file, "%s\n", msg);
+
+	va_list args;
+	va_start(args, msg);
+
+	if(lvl == NONE_L) {
+		vfprintf(log->log_file, msg, args);
+		va_end(args);
+		return 0;
+	}
 		
 	char* str_lvl;
 	switch(lvl){
@@ -50,5 +58,9 @@ int log_write(log_t* log, char* msg, log_level lvl){
 			break;
 		}
 			
-	return fprintf(log->log_file, "[%s] %s\n", str_lvl, msg);
+
+	fprintf(log->log_file, "[%s] ", str_lvl);
+	vfprintf(log->log_file, msg, args);
+	va_end(args);
+	return 0;
 }
