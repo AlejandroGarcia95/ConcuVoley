@@ -2,78 +2,112 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
+#include <signal.h>
+#include <sys/types.h>
+#include <sys/ipc.h> 
+#include <sys/shm.h> 
+#include <unistd.h>
+#include <assert.h>
+#include <sys/wait.h>
 #include <time.h>
+#include "confparser.h"
 #include "log.h"
 #include "player.h"
-#include "match.h"
+#include "namegen.h"
 
 #define LOG_ROUTE "ElLog.txt"
-#define CONF_ROUTE "conf.txt"
 
+#define PLAYERS_FOR_NOW 2
 
-/* struct conf: an aux structure for parsing the
- * configuration file at path CONF_ROUTE. */
-struct conf {
-	size_t rows;
-	size_t cols;
-	size_t matches;
-};
+#define SIG_SET SIGUSR1
 
-/* Stores the value of the parameter recieved
- * into the respective field of struct conf sc.*/
-void parse_value(struct conf* sc, char* param, size_t p_value){
-	if((!sc) || (!param)) return;
-	
-	if(strcmp(param, "F") == 0) {
-		sc->rows = p_value;
-		return;
-		}
-		
-	if(strcmp(param, "K") == 0) {
-		sc->matches = p_value;
-		return;
-		}
-		
-	if(strcmp(param, "C") == 0) {
-		sc->cols = p_value;
-		return;
-		}	
+void handler_players_set(int signum) {
+	assert(signum == SIG_SET);
+	// Check if set is to start or finish
+	if(player_is_playing()) 
+		player_stop_playing();
+	else
+		player_start_playing();
 }
 
-/* Reads configuration file and stores its
- * contents at sc. Returns true if the operation
- * was successful, false otherwise. Take note
- * that if any parameter from struct conf is
- * missing at the configuration file, the value
- * returned will be false, even if other fields
- * were successfully read.*/
-bool read_conf_file(struct conf* sc){
-	FILE *pf = fopen(CONF_ROUTE, "r");
-	if(!pf) return false;
-	int parsed_amount = 0, r = 8;
-	// For every line in pf, parse its value
-	while(r > 0){
-		char param[15];
-		size_t p_value;
-		r = fscanf(pf, "%s : %d\n", param, &p_value);
-		if(r == 2) {
-			parse_value(sc, param, p_value);
-			parsed_amount++;
-			}
+
+void do_in_player(unsigned long int* set_score){
+	srand(time(NULL) ^ (getpid()<<16));
+	char p_name[NAME_MAX_LENGTH];
+	generate_random_name(p_name);
+	
+	player_t* player = player_get_instance();
+	if(!player){
+		shmdt(set_score);
+		return;
 		}
-	fclose(pf);	
-	// Check all fields were correctly parsed
-	int expected_amount = sizeof(struct conf) / sizeof(size_t);
-	if(expected_amount == parsed_amount)
-		return true;
-	// Print error message. May we log_write it?
-	printf("Error! Missing parameters or conf file format invalid\n");
-	return false;
+	
+	player_set_name(p_name);
+	
+	// Set the hanlder for the SIG_SET signal!
+	struct sigaction sa;
+	sigset_t sigset;	
+	sigemptyset(&sa.sa_mask);
+	sa.sa_flags = 0;
+	sa.sa_handler = handler_players_set;
+	sigaction(SIG_SET, &sa, NULL);
+	
+	// Here the player is on "waiting for playing"
+	// status... Change this later for a proper
+	// thing, i.e. condition variable
+	while(!player_is_playing())
+		sleep(1);
+	
+	player_play_set(set_score);
+	// When set is finished, we kill the player
+	printf("****** Death of: %s \n", player_get_name());
+	shmdt(set_score);
+	player_destroy(player);
+}
+
+/* Launches a new process which will assume a
+ * player's role. Each player is given a set_score
+ * memory to be shared with the main process.
+ * In order to identify each player's set_score
+ * the main process must keep a player_id variable
+ * on this function's scope. After launching the
+ * new player process, this function must call
+ * the do_in_player function to allow it to
+ * play against other in a match. Note the main
+ * process stores the player set_score and the
+ * shmid on its side.*/
+int launch_player(unsigned long int** set_score, int* shmid){
+	static int this_player_id = 0;
+	// Get the key. Unique per player
+	key_t key = ftok("makefile", this_player_id);
+	// Create this player's set_score as shared memory
+	if ((*shmid = shmget(key, sizeof(unsigned long int), 
+						IPC_CREAT | 0644)) < 0)
+        return -1;
+    // Attach this player's set_score   
+    *set_score = shmat(*shmid, NULL, 0);
+    if(*set_score == (unsigned long int*) -1)
+		return -1;
+	// New process, new player!
+	pid_t pid = fork();
+	
+	if(pid < 0){ // Error
+		shmdt(*set_score);
+		shmctl(*shmid, IPC_RMID, NULL);
+		}
+	else if(pid == 0) // Son aka player
+		do_in_player(*set_score);
+	else { // Father aka main process
+		this_player_id++;
+		}
+		return 0;
 }
 
 
 int main(int argc, char **argv){
 	srand(time(NULL));
+	
+	pid_t main_pid = getpid();
 	
 	// Test log levels
 	log_t* log = log_open(LOG_ROUTE, false);
@@ -103,51 +137,48 @@ int main(int argc, char **argv){
 		
 	log_write(log, "--------------------------------------", NONE_L);	
 	
-	// Create 10 players, check fields and delete them	
+	// Launch two player processes and make them play, yay!
+	unsigned long int* players_scores[PLAYERS_FOR_NOW] = {};
+	int scores_shmid[PLAYERS_FOR_NOW] = {};
+	
+	// We want main process to ignore SIG_SET signal
+	signal(SIG_SET, SIG_IGN);
+	
 	int i;
-	for(i = 0; i < 10; i++){
-		char plyr_name[15], plyr_skill[10], plyr_matches[10];
-		sprintf(plyr_name, "Player%d", i);
-		player_t* player_act = player_create(plyr_name);
-		// Check and log_write fields
-		sprintf(plyr_skill, "%d", player_get_skill(player_act));
-		sprintf(plyr_matches, "%d", player_get_matches(player_act));
-		
-		log_write(log, "Created new player. Name:", NONE_L);
-		log_write(log, player_get_name(player_act), NONE_L);
-		log_write(log, "Skill:", NONE_L);
-		log_write(log, plyr_skill, NONE_L);
-		log_write(log, "Matches played:", NONE_L);
-		log_write(log, plyr_matches, NONE_L);
-		player_destroy(player_act);
-		}	
-		
-	log_write(log, "--------------------------------------", NONE_L);
 	
-	// Create 2 players and make them play a match
-	player_t* p1 = player_create("Player 1");
-	player_t* p2 = player_create("Player 2");
-	match_t* match = match_create(p1, p2);
+	// Launch players processes
+	for(i = 0; i < PLAYERS_FOR_NOW; i++){
+		if(getpid() == main_pid)
+			launch_player(&players_scores[i], &scores_shmid[i]);	
+		}
 	
-	char msg_log[100];
-	sprintf(msg_log, "Player 1 skill: %d", player_get_skill(p1));
-	log_write(log, msg_log, NONE_L);
-	sprintf(msg_log, "Player 2 skill: %d", player_get_skill(p2));
-	log_write(log, msg_log, NONE_L);
-	log_write(log, "Let the match begin!", NONE_L);
-	match_play(match);
-	log_write(log, "Match ended. Results are...", NONE_L);
-	sprintf(msg_log, "Player 1: %d", match_get_home_sets(match));
-	log_write(log, msg_log, NONE_L);
-	sprintf(msg_log, "Player 2: %d", match_get_away_sets(match));
-	log_write(log, msg_log, NONE_L);
+	// If we're the child:
+	if(getpid() != main_pid){
+		log_close(log);
+		return 0;
+		}
+
+	// Here we make the two players play by signaling them
+	// Parent must sleep a while to allow the players to be
+	// ready. Change later for a condition variable!
+	sleep(2);
+	kill(0, SIG_SET);
+	// Let the set last 20 seconds for now. After that, the
+	// main process will make all players stop
+	sleep(6);
+	kill(0, SIG_SET);
 	
+	// Wait for the two player's deaths
+	wait(NULL);
+	wait(NULL);
+	// Destroy players shared memory
+	for(i = 0; i < PLAYERS_FOR_NOW; i++){
+		printf("****************Score %d: %ld******\n", i+1, *players_scores[i]);
+		shmdt(players_scores[i]);
+		shmctl(scores_shmid[i], IPC_RMID, NULL);
+		}
+			
 	
-	player_destroy(p1);
-	player_destroy(p2);
-	match_destroy(match);
-		
-		
 	log_close(log);
 	return 0;
 }

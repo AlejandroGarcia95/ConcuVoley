@@ -11,6 +11,10 @@
 #define SKILL_AVG 80
 #define DELTA_SKILL 15
 
+/* Third checkpoint major update: From now on, as
+ * there will only be one player_t for each player
+ * process, player_t struct will become a singleton!*/
+
 /* Player structure used to model a player of
  * the tournament. For the time being, each
  * player has name, a skill field which measures 
@@ -21,32 +25,50 @@ typedef struct player_ {
 	char name[NAME_MAX_LENGTH];
 	size_t skill;
 	size_t matches_played;
+	bool currently_playing;
 } player_t;
 
-/* Dynamically creates a new player with a given 
- * name and properly initialize all other values.
- * Returns NULL if the allocation fails.*/
-player_t* player_create(char* name);
+/* Returns the current player singleton!*/
+player_t* player_get_instance();
 
-/* Destroys the received player.*/
-void player_destroy(player_t* player);
+/* Destroys the current player.*/
+void player_destroy();
 
-/* Returns the skill of the received player.
- * If player is NULL, returns some number
- * above SKILL_MAX as an error code.*/
-size_t player_get_skill(player_t* player);
+/* Set the name for the current player.
+ * If name is NULL, silently does nothing.*/
+void player_set_name(char* name);
+
+/* Returns the skill of the current player.*/
+size_t player_get_skill();
 
 /* Returns the amount of matches played by the 
- * received player. If player is NULL, let it
- * return 0 by the time being.*/
-size_t player_get_matches(player_t* player);
+ * current player. */
+size_t player_get_matches();
 
-/* Returns the skill of the received player.
- * If player is NULL, returns NULL.*/
-char* player_get_name(player_t* player);
+/* Returns the name of the current player.*/
+char* player_get_name();
 
-/*Increase by 1 the amount of matches played.*/
-void player_increase_matches_played(player_t* player);
+/* Increase by 1 the amount of matches played.*/
+void player_increase_matches_played();
 
+/* Make this player play the current set
+ * storing their score in the set_score
+ * variable. This function should do the
+ * following: make this player sleep an
+ * amount of time inversely proportional
+ * to their skill, and after that, make
+ * it add a point to their score. Then,
+ * repeat all over.*/
+void player_play_set(unsigned long int* set_score);
+
+/* Returns true or false if the player
+ * is or not playing.*/
+bool player_is_playing();
+
+/* Makes player stop playing.*/
+void player_stop_playing();
+
+/* Makes player stop playing.*/
+void player_start_playing();
 
 #endif
