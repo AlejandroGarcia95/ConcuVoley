@@ -6,8 +6,8 @@
 #include "player.h"
 
 // In microseconds!
-#define MIN_SCORE_TIME 100
-#define MAX_SCORE_TIME 500000
+#define MIN_SCORE_TIME 50
+#define MAX_SCORE_TIME 50000
 
 /* Auxiliar function that generates a random
  * skill field for a new player. It returns a
@@ -27,6 +27,7 @@ size_t generate_random_skill(){
 
 /* Auxiliar function that makes the player
  * sleep some time accordingly to their skill.*/
+// Should we add a random component?
 void emulate_score_time(){
 	player_t* player = player_get_instance();
 	unsigned long int x = SKILL_MAX - player_get_skill();
@@ -37,7 +38,6 @@ void emulate_score_time(){
 	unsigned long int t = MIN_SCORE_TIME;
 	int pend = (MAX_SCORE_TIME - MIN_SCORE_TIME) / SKILL_MAX;
 	t += (unsigned long int) (pend * x);
-	printf("******Skill %d vs time %ld\n", player_get_skill(), t);
 	usleep(t);
 }
 
@@ -56,8 +56,6 @@ player_t* player_create(){
 }
 
 // ----------------------------------------------------------------
-
-
 
 /* Returns the current player singleton!*/
 player_t* player_get_instance(){
@@ -139,14 +137,13 @@ void player_start_playing(){
  * amount of time inversely proportional
  * to their skill, and after that, make
  * it add a point to their score. Then,
- * repeat all over.*/
+ * repeat all over while player_is_playing*/
 void player_play_set(unsigned long int* set_score){
 	player_t* player = player_get_instance();
 	if(!player) return;
 	
-	while(player->currently_playing){
+	while(player_is_playing()){
 		emulate_score_time();
-		//printf("!!! I scoreeee !!!!!!! \n");
 		(*set_score)++;
 		}
 }

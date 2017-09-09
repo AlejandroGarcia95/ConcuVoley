@@ -21,6 +21,11 @@
 
 #define SIG_SET SIGUSR1
 
+
+/* Handler function for a player process.
+ * It should only be used with SIG_SET
+ * signal. Makes the player start or stop
+ * playing the set accordingly.*/
 void handler_players_set(int signum) {
 	assert(signum == SIG_SET);
 	// Check if set is to start or finish
@@ -30,9 +35,15 @@ void handler_players_set(int signum) {
 		player_start_playing();
 }
 
-
+/* Function that makes the process adopt
+ * a player's role. Basically, it creates
+ * a player, and make them play a set.
+ * The score of that player on the set is
+ * stored in *set_score, assumed to be a
+ * shared memory address with main process.*/
 void do_in_player(unsigned long int* set_score){
-	srand(time(NULL) ^ (getpid()<<16));
+	// Re-srand with a changed seed
+	srand(time(NULL) ^ (getpid() << 16));
 	char p_name[NAME_MAX_LENGTH];
 	generate_random_name(p_name);
 	
@@ -41,10 +52,9 @@ void do_in_player(unsigned long int* set_score){
 		shmdt(set_score);
 		return;
 		}
-	
 	player_set_name(p_name);
 	
-	// Set the hanlder for the SIG_SET signal!
+	// Set the hanlder for the SIG_SET signal
 	struct sigaction sa;
 	sigset_t sigset;	
 	sigemptyset(&sa.sa_mask);
@@ -60,9 +70,9 @@ void do_in_player(unsigned long int* set_score){
 	
 	player_play_set(set_score);
 	// When set is finished, we kill the player
-	printf("****** Death of: %s \n", player_get_name());
 	shmdt(set_score);
 	player_destroy(player);
+	// Beware! Returns to main!
 }
 
 /* Launches a new process which will assume a
@@ -103,67 +113,68 @@ int launch_player(unsigned long int** set_score, int* shmid){
 		return 0;
 }
 
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * 
+ * 		MAIN DOWN HERE
+ * 
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
 
 int main(int argc, char **argv){
 	srand(time(NULL));
-	
+	// "Remember who you are and where you come from; 
+	// otherwise, you don't know where you are going."
 	pid_t main_pid = getpid();
-	
+
+
 	// Test log levels
 	log_t* log = log_open(LOG_ROUTE, false);
-	log_write(log, "Testing: none", NONE_L);
-	log_write(log, "Testing: warning", WARNING_L);
-	log_write(log, "Testing: ERROR", ERROR_L);
-	log_write(log, "Testing: info", INFO_L);
-	log_write(log, "", NONE_L); // empty line
+/*	log_write(log, NONE_L, "Testing: none\n");
+	log_write(log, WARNING_L, "Testing: warning\n");
+	log_write(log, ERROR_L, "Testing: ERROR\n");
+	log_write(log, INFO_L, "Testing: info\n");
+	log_write(log, NONE_L, "\n"); // empty line
 	
-	log_write(log, "--------------------------------------", NONE_L);
+	log_write(log, NONE_L, "--------------------------------------\n");
 	
 	// Read conf file
 	struct conf sc;
 	bool parse_ok = read_conf_file(&sc);
 	if(parse_ok){ // Write parsed args to log
-		char aux_value[10];
-		log_write(log, "Field F value:", NONE_L);
-		sprintf(aux_value, "%d", sc.rows);
-		log_write(log, aux_value, NONE_L);
-		log_write(log, "Field C value:", NONE_L);
-		sprintf(aux_value, "%d", sc.cols);
-		log_write(log, aux_value, NONE_L);
-		log_write(log, "Field K value:", NONE_L);
-		sprintf(aux_value, "%d", sc.matches);
-		log_write(log, aux_value, NONE_L);
-		}
+		log_write(log, NONE_L, "Field F value: %d\n", sc.rows);
+		log_write(log, NONE_L, "Field C value: %d\n", sc.cols);
+		log_write(log, NONE_L, "Field K value: %d\n", sc.matches);
+	}
 		
-	log_write(log, "--------------------------------------", NONE_L);	
+	log_write(log, NONE_L, "--------------------------------------\n");	
+*/	
 	
-	// Launch two player processes and make them play, yay!
+	// Let's launch two player processes and make them play, yay!
 	unsigned long int* players_scores[PLAYERS_FOR_NOW] = {};
 	int scores_shmid[PLAYERS_FOR_NOW] = {};
-	
 	// We want main process to ignore SIG_SET signal
 	signal(SIG_SET, SIG_IGN);
 	
 	int i;
-	
 	// Launch players processes
 	for(i = 0; i < PLAYERS_FOR_NOW; i++){
 		if(getpid() == main_pid)
 			launch_player(&players_scores[i], &scores_shmid[i]);	
 		}
-	
-	// If we're the child:
+			
+	// If we're a child/player, we should stop here
 	if(getpid() != main_pid){
 		log_close(log);
 		return 0;
 		}
+	// From now onwards, only main process can access
 
-	// Here we make the two players play by signaling them
+	// Here we make the two players play by signaling them.
 	// Parent must sleep a while to allow the players to be
 	// ready. Change later for a condition variable!
 	sleep(2);
 	kill(0, SIG_SET);
-	// Let the set last 20 seconds for now. After that, the
+	// Let the set last 6 seconds for now. After that, the
 	// main process will make all players stop
 	sleep(6);
 	kill(0, SIG_SET);
@@ -173,12 +184,11 @@ int main(int argc, char **argv){
 	wait(NULL);
 	// Destroy players shared memory
 	for(i = 0; i < PLAYERS_FOR_NOW; i++){
-		printf("****************Score %d: %ld******\n", i+1, *players_scores[i]);
+		log_write(log, NONE_L, "Player %d set score: %ld\n", i+1, *players_scores[i]);
 		shmdt(players_scores[i]);
 		shmctl(scores_shmid[i], IPC_RMID, NULL);
 		}
 			
-	
 	log_close(log);
 	return 0;
 }
