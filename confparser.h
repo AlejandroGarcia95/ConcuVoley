@@ -14,6 +14,7 @@ struct conf {
 	size_t rows;
 	size_t cols;
 	size_t matches;
+	size_t capacity;
 };
 
 /* Stores the value of the parameter recieved

@@ -121,15 +121,16 @@ int launch_player(unsigned long int** set_score, int* shmid){
 
 
 int main(int argc, char **argv){
-	srand(time(NULL));
+	time_t time_start = time(NULL);
+	srand(time_start);
 	// "Remember who you are and where you come from; 
 	// otherwise, you don't know where you are going."
 	pid_t main_pid = getpid();
 
 
 	// Test log levels
-	log_t* log = log_open(LOG_ROUTE, false);
-/*	log_write(log, NONE_L, "Testing: none\n");
+	log_t* log = log_open(LOG_ROUTE, false, time_start);
+	log_write(log, NONE_L, "Testing: none\n");
 	log_write(log, WARNING_L, "Testing: warning\n");
 	log_write(log, ERROR_L, "Testing: ERROR\n");
 	log_write(log, INFO_L, "Testing: info\n");
@@ -144,10 +145,11 @@ int main(int argc, char **argv){
 		log_write(log, NONE_L, "Field F value: %d\n", sc.rows);
 		log_write(log, NONE_L, "Field C value: %d\n", sc.cols);
 		log_write(log, NONE_L, "Field K value: %d\n", sc.matches);
+		log_write(log, NONE_L, "Field M value: %d\n", sc.capacity);
 	}
 		
 	log_write(log, NONE_L, "--------------------------------------\n");	
-*/	
+	
 	
 	// Let's launch two player processes and make them play, yay!
 	unsigned long int* players_scores[PLAYERS_FOR_NOW] = {};

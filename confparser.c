@@ -22,7 +22,12 @@ void parse_value(struct conf* sc, char* param, size_t p_value){
 	if(strcmp(param, "C") == 0) {
 		sc->cols = p_value;
 		return;
-		}	
+		}			
+		
+	if(strcmp(param, "M") == 0) {
+		sc->capacity = p_value;
+		return;
+		}
 }
 
 /* Reads configuration file and stores its
