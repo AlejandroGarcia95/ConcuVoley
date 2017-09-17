@@ -6,8 +6,8 @@
 #include "player.h"
 
 // In microseconds!
-#define MIN_SCORE_TIME 50
-#define MAX_SCORE_TIME 50000
+#define MIN_SCORE_TIME 15000
+#define MAX_SCORE_TIME 40000
 
 /* Auxiliar function that generates a random
  * skill field for a new player. It returns a
@@ -26,8 +26,9 @@ size_t generate_random_skill(){
 }
 
 /* Auxiliar function that makes the player
- * sleep some time accordingly to their skill.*/
-// Should we add a random component?
+ * sleep some time accordingly to their skill.
+ * A random component is added to the time, so
+ * a little luck could be better than skill*/
 void emulate_score_time(){
 	player_t* player = player_get_instance();
 	unsigned long int x = SKILL_MAX - player_get_skill();
@@ -38,7 +39,9 @@ void emulate_score_time(){
 	unsigned long int t = MIN_SCORE_TIME;
 	int pend = (MAX_SCORE_TIME - MIN_SCORE_TIME) / SKILL_MAX;
 	t += (unsigned long int) (pend * x);
-	usleep(t);
+	// Random component of time. 
+	unsigned long int t_rand = rand() % MAX_SCORE_TIME;
+	usleep(t + t_rand);
 }
 
 /* Dynamically creates a new player with a given 
