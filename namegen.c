@@ -8,15 +8,15 @@
 void generate_random_name(char* buffer){
 	// Hardcoded names and surnames
 	char names[NAMES_AMMOUNT][MAX_LEGTH_HALFNAME] = {
-	"Eddard", "Robert", "Stannis", "Tyrion", "Jamie", 
-	"Cersei", "Jon", "Brandom", "Daennerys", "Ben",
+	"Eddard", "Robert", "Stannis", "Tyrion", "Jaime", 
+	"Cersei", "Jon", "Brandon", "Daenerys", "Ben",
 	"Jorah", "Arya", "Catelyn", "Gregor", "Sansa"
 	};
 
 	char surnames[SURNAMES_AMMOUNT][MAX_LEGTH_HALFNAME] = {
 	"Stark", "Baratheon", "Lannister", "Targaryen", 
-	"Mormont", "Tyrell", "Snow", "Cleganne", 
-	"Tarly", "Grayjoy"
+	"Mormont", "Tyrell", "Snow", "Clegane", 
+	"Tarly", "Greyjoy"
 	};
 	// Random actual name writing
 	unsigned int n = rand() % NAMES_AMMOUNT;
