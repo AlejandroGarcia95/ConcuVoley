@@ -6,6 +6,8 @@
 #include "player.h"
 #include "match.h"
 
+// DEPRECATED !!!!!!!!!!!!!!!!!!!!!!!!!!
+
 /* This auxiliar function simulates the
  * duration of the match with a simple
  * sleep call. */
