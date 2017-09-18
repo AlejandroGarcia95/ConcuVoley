@@ -9,9 +9,10 @@
 
 /* Log structure used to represent the log. 
  * Shall we add more fields to it? */
+ // TODO: Add a lock for writing in the lock
 typedef struct log_ {
 	FILE* log_file;
-	time_t time_created;
+	struct timeval time_created;
 } log_t;
 
 /* Log level specifier for writing to the log. */
@@ -22,7 +23,7 @@ typedef enum log_level_ {NONE_L, INFO_L, WARNING_L, ERROR_L} log_level;
  * NULL if creating the log failed. The new field app_started
  * must be a time_t indicating when did the program started, 
  * and is used for timestamps in the log. */
-log_t* log_open(char* route, bool append, time_t time_app_started);
+log_t* log_open(char* route, bool append, struct timeval time_app_started);
 
 /* Closes the received log file and destroys the log itself.*/
 void log_close(log_t* log);

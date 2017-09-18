@@ -1,5 +1,5 @@
 CFLAGS := -std=c99
-ARCHIVOS = log.o player.o namegen.o confparser.o
+ARCHIVOS = log.o player.o namegen.o confparser.o match.o
 PROGRAMA = main
 
 all: $(ARCHIVOS) $(PROGRAMA).o

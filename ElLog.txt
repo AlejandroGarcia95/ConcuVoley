@@ -1,0 +1,52 @@
+[24.880 ms] Let the tournament begin!
+[133.984 ms] Set 1 started!
+[234.742 ms] [INFO] Created new player: Brandon Snow
+[240.908 ms] [INFO] Created new player: Arya Stark
+[227.368 ms] [INFO] Created new player: Daenerys Mormont
+[245.545 ms] [INFO] Brandon Snow skill is: 83
+[263.671 ms] [INFO] Created new player: Jorah Tyrell
+[250.538 ms] [INFO] Daenerys Mormont skill is: 74
+[243.946 ms] [INFO] Arya Stark skill is: 88
+[279.087 ms] [INFO] Jorah Tyrell skill is: 90
+[292.537 ms] [INFO] Player Brandon Snow started playing
+[292.728 ms] [INFO] Player Jorah Tyrell started playing
+[296.873 ms] [INFO] Player Daenerys Mormont started playing
+[299.764 ms] [INFO] Player Arya Stark started playing
+[6.211 s] [INFO] Player Brandon Snow stopped playing
+[6.213 s] [INFO] Player Daenerys Mormont stopped playing
+[6.215 s] [INFO] Player Arya Stark stopped playing
+[6.217 s] Player 1 set score: 159
+[6.221 s] Player 2 set score: 138
+[6.222 s] Player 3 set score: 148
+[6.222 s] Player 4 set score: 162
+[6.221 s] [INFO] Player Jorah Tyrell stopped playing
+[6.224 s] Set 2 started!
+[6.224 s] [INFO] Player Daenerys Mormont started playing
+[6.224 s] [INFO] Player Jorah Tyrell started playing
+[6.224 s] [INFO] Player Brandon Snow started playing
+[6.224 s] [INFO] Player Arya Stark started playing
+[12.224 s] [INFO] Player Jorah Tyrell stopped playing
+[12.224 s] [INFO] Player Daenerys Mormont stopped playing
+[12.227 s] [INFO] Player Brandon Snow stopped playing
+[12.227 s] [INFO] Player Arya Stark stopped playing
+[12.229 s] Player 1 set score: 159
+[12.231 s] Player 2 set score: 148
+[12.231 s] Player 3 set score: 156
+[12.231 s] Player 4 set score: 157
+[12.232 s] Set 3 started!
+[12.232 s] [INFO] Player Jorah Tyrell started playing
+[12.232 s] [INFO] Player Daenerys Mormont started playing
+[12.232 s] [INFO] Player Arya Stark started playing
+[12.232 s] [INFO] Player Brandon Snow started playing
+[18.232 s] [INFO] Player Daenerys Mormont stopped playing
+[18.233 s] [INFO] Player Brandon Snow stopped playing
+[18.233 s] Player 1 set score: 166
+[18.233 s] Player 2 set score: 142
+[18.233 s] Player 3 set score: 155
+[18.233 s] Player 4 set score: 157
+[18.236 s] [INFO] Player Daenerys Mormont: wont start playing
+[18.237 s] [INFO] Player Arya Stark: wont start playing
+[18.240 s] [INFO] Player Jorah Tyrell stopped playing
+[18.242 s] [INFO] Player Jorah Tyrell: wont start playing
+[18.242 s] [INFO] Player Brandon Snow: wont start playing
+[18.243 s] Team 2 won!
