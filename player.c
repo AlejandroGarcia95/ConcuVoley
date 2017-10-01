@@ -181,6 +181,90 @@ void handler_players_set(int signum) {
 		player_stop_playing();
 }
 
+
+
+void player_join_match(player_t* player, log_t* log) {
+	// Joining lobby!!
+
+	char* p_name;
+	p_name = player->name;
+	// Open court fifo
+	char* court_fifo_name = "fifos/court.fifo";
+	int court_fifo = open(court_fifo_name, O_WRONLY);
+	if (court_fifo < 0) {
+		log_write(log, ERROR_L, "FIFO opening error for court 000 at player %03d [errno: %d]\n", player->id, errno);
+		exit(-1);
+	}
+	log_write(log, INFO_L, "Player %03d opened court 000 FIFO\n", player->id);
+
+	// Send "I want to play" message
+	message_t msg = {};
+	msg.m_type = MSG_PLAYER_JOIN_REQ;
+	msg.m_player_id = player->id;
+	if (write(court_fifo, &msg, sizeof(message_t)) < 0) {
+		log_write(log, ERROR_L, "Player %03d failed to write to court 000 [errno: %d]\n", player->id, errno);
+		close(court_fifo);
+		exit(-1);
+	}
+
+	// If accepted (to be implemented) join match
+	// Open self fifo
+	char* my_fifo_name = get_player_fifo_name(player->id);
+	int my_fifo = open(my_fifo_name, O_RDONLY);
+	if (my_fifo < 0) {
+		log_write(log, ERROR_L, "FIFO opening error for player %03d at player %03d [errno: %d]\n", player->id, player->id, errno);
+		exit(-1);
+	}
+	free(my_fifo_name);
+	log_write(log, INFO_L, "Player %03d opened self FIFO\n", player->id);
+
+
+	// Here the player has joinned a match, it's waiting for "set start signal"
+	// TODO: put all this in a separate function
+	while(msg.m_type != MSG_MATCH_END){
+
+		// REMOVE ME
+		int miss_count = 0;
+
+		if (read(my_fifo, &msg, sizeof(message_t)) < 0) {
+			log_write(log, ERROR_L, "Player %s: bad read [errno: %d]\n", p_name, errno);
+			close(court_fifo);
+			close(my_fifo);
+			exit(-1);
+		}
+
+		if(msg.m_type == MSG_SET_START) {
+			unsigned long int set_score = 0;
+			msg.m_type = MSG_PLAYER_SCORE;
+			msg.m_player_id = player->id;
+	
+			// Play the set until it's done (by SIG_SET)
+			log_write(log, INFO_L, "Player %s started playing\n", p_name);
+			player_start_playing();
+			player_play_set(&set_score);
+			msg.m_score = set_score;
+			// When set is finished, we use the pipe to
+			// send main process our set_score
+			if (write(court_fifo, &msg, sizeof(message_t)) < 0)
+				log_write(log, ERROR_L, "Player %03d cannot write in court 000 [errno: %d]\n", player->id, errno);
+			log_write(log, INFO_L, "Player %s finished set (scored %lu)\n", p_name, set_score);
+		} else {
+			log_write(log, INFO_L, "Player %s: wont start playing\n", p_name);
+			miss_count++;
+			if (miss_count >= 100) {
+				log_write(log, CRITICAL_L, "Have to shut down player %s [%03d]: wont start playing too many times (maybe deadlock)\n", p_name, player->id);
+				exit(-1);
+			}
+		}
+	}
+
+	close(court_fifo);
+	close(my_fifo);
+
+}
+
+
+
 /* Function that makes the process adopt
  * a player's role. Basically, it creates
  * a player, and make them play a match.
@@ -215,68 +299,14 @@ void player_main(unsigned int id, log_t* log) {
 	sa.sa_handler = handler_players_set;
 	sigaction(SIG_SET, &sa, NULL);
 
-	// Open court fifo
-	char* court_fifo_name = "fifos/court.fifo";
-	int court_fifo = open(court_fifo_name, O_WRONLY);
-	if (court_fifo < 0) {
-		log_write(log, ERROR_L, "FIFO opening error for court 000 at player %03d [errno: %d]\n", player->id, errno);
-		exit(-1);
-	}
-	log_write(log, INFO_L, "Player %03d opened court 000 FIFO\n", player->id);
-
-	message_t msg = {};
-	msg.m_type = MSG_PLAYER_JOIN_REQ;
-	msg.m_player_id = player->id;
-	if (write(court_fifo, &msg, sizeof(message_t)) < 0) {
-		log_write(log, ERROR_L, "Player %03d failed to write to court 000 [errno: %d]\n", player->id, errno);
-		close(court_fifo);
-		exit(-1);
+	for (int i = 0; i < NUM_MATCHES; i++) {
+		player_join_match(player, log);
+		
+		// Wait some tame before joining again
+		unsigned long int t_rand = rand() % 2000000;
+		usleep(t_rand);
 	}
 
-	// Open self fifo
-	char* my_fifo_name = get_player_fifo_name(player->id);
-	int my_fifo = open(my_fifo_name, O_RDONLY);
-	if (my_fifo < 0) {
-		log_write(log, ERROR_L, "FIFO opening error for player %03d at player %03d [errno: %d]\n", player->id, player->id, errno);
-		exit(-1);
-	}
-	free(my_fifo_name);
-	log_write(log, INFO_L, "Player %03d opened self FIFO\n", player->id);
-
-	// Here the player is on "waiting for playing"
-	// status. Will go on when the main process
-	// sends him a message for doing so.
-	while(msg.m_type != MSG_MATCH_END){
-
-		if (read(my_fifo, &msg, sizeof(message_t)) < 0) {
-			log_write(log, ERROR_L, "Player %s: bad read [errno: %d]\n", p_name, errno);
-			close(court_fifo);
-			close(my_fifo);
-			exit(-1);
-		}
-
-		if(msg.m_type == MSG_SET_START) {
-			unsigned long int set_score = 0;
-			msg.m_type = MSG_PLAYER_SCORE;
-			msg.m_player_id = player->id;
-	
-			// Play the set until it's done (by SIG_SET)
-			log_write(log, INFO_L, "Player %s started playing\n", p_name);
-			player_start_playing();
-			player_play_set(&set_score);
-			msg.m_score = set_score;
-			// When set is finished, we use the pipe to
-			// send main process our set_score
-			if (write(court_fifo, &msg, sizeof(message_t)) < 0)
-				log_write(log, ERROR_L, "Player %03d cannot write in court 000 [errno: %d]\n", player->id, errno);
-			log_write(log, INFO_L, "Player %s finished set (scored %lu)\n", p_name, set_score);
-		} else {
-			log_write(log, INFO_L, "Player %s: wont start playing\n", p_name);
-		}
-	}
-
-	close(court_fifo);
-	close(my_fifo);
 	player_destroy(player);
 
 	log_close(log);

@@ -88,9 +88,8 @@ int main(int argc, char **argv){
 	// it's just for players processes
 	signal(SIG_SET, SIG_IGN);
 	
-	int i, j;
 	// Launch players processes
-	for(i = 0; i < PLAYERS_PER_MATCH; i++){
+	for(int i = 0; i < PLAYERS_PER_MATCH; i++){
 		if (getpid() == main_pid)
 			launch_player(i, log);
 	}
@@ -109,8 +108,14 @@ int main(int argc, char **argv){
 	// Launch a single match, then end the tournament
 	match_t* match = match_create(log);
 	
-	match_lobby(match, log);
+	for (int j = 0; j < NUM_MATCHES; j++) {
+		match_lobby(match, log);
+	}
 	
+	for (int i = 0; i < PLAYERS_PER_MATCH; i++) {
+		log_write(log, INFO_L, "Player %03d won a total of %d matches\n", i, match->player_points[i]);
+	}
+
 	match_destroy(match);		
 	log_close(log);
 	return 0;

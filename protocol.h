@@ -4,6 +4,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+// Temporary
+#define NUM_MATCHES 3
+
+
 #define MAX_FIFO_NAME_LEN 50
 #define FIFO_CREAT_FLAGS (S_IFIFO | 0666)
 

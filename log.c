@@ -72,6 +72,7 @@ int log_write(log_t* log, log_level lvl, char* msg, ... ){
 		return 0;
 	}
 		
+	// TODO: Add colors maybe? \x1b[32m \x1b[37;1
 	char* str_lvl;
 	switch(lvl){
 		case INFO_L: 
@@ -82,6 +83,9 @@ int log_write(log_t* log, log_level lvl, char* msg, ... ){
 			break;
 		case ERROR_L: 
 			str_lvl = "ERROR";
+			break;
+		case CRITICAL_L:
+			str_lvl = "CRITICAL";
 			break;
 		}
 			

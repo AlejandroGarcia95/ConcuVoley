@@ -35,8 +35,10 @@ match_t* match_create(log_t* log) {
 	match->court_fifo_name = court_fifo_name;
 	match->court_fifo = -1;
 
-	for (int i = 0; i < PLAYERS_PER_MATCH; i++) 
+	for (int i = 0; i < PLAYERS_PER_MATCH; i++) {
 		match->player_fifos[i] = -1;
+		match->player_points[i] = 0;
+	}
 
 	match->sets_won_away = 0;
 	match->sets_won_home = 0;
@@ -61,13 +63,16 @@ void match_destroy(match_t* match){
  */
 void match_lobby(match_t* match, log_t* log) {
 
+	log_write(log, INFO_L, "A new match is about to begin... lobby\n", errno);
 	unsigned int connected_players = 0;
 	message_t msg = {};
 
 	while (connected_players < PLAYERS_PER_MATCH) {
+
 		// Now match is in the "empty" state, waiting for new connections
 		// Watch out! open is blocking!
 		if (match->court_fifo < 0) {
+			log_write(log, INFO_L, "Court FIFO is closed, need to open one\n", errno);
 			int court_fifo = open(match->court_fifo_name, O_RDONLY);
 			if (court_fifo < 0) {
 				log_write(log, ERROR_L, "FIFO opening error for court 000 [errno: %d]\n", errno);
@@ -76,8 +81,9 @@ void match_lobby(match_t* match, log_t* log) {
 			match->court_fifo = court_fifo;
 		}
 
+		log_write(log, INFO_L, "Court awaiting connections\n", errno);
 		// A connection has been made! Waiting for initial message!
-		if (read(match->court_fifo, &msg, sizeof(message_t)) < 0) {
+		if (read(match->court_fifo, &msg, sizeof(message_t)) < sizeof(message_t)) {
 			log_write(log, ERROR_L, "Court 000 bad read new connection message [errno: %d]\n", errno);
 			close(match->court_fifo);
 			match->court_fifo = -1;
@@ -90,10 +96,15 @@ void match_lobby(match_t* match, log_t* log) {
 				// Is a request, let's open other player's fifo!
 				char* player_fifo_name = get_player_fifo_name(msg.m_player_id);
 				match->player_fifos[connected_players] = open(player_fifo_name, O_WRONLY);
-				if (match->player_fifos[connected_players] < 0)
+				if (match->player_fifos[connected_players] < 0) {
 					log_write(log, ERROR_L, "FIFO opening error for player %d fifo at court 000 [errno: %d]\n", msg.m_player_id, errno);
-				else
+				} else {
+					// TODO: change this to be less dependent on player_id (maybe a double index??)
+					match->player_connected[connected_players] = msg.m_player_id;
+					match->player_team[msg.m_player_id] = connected_players % 2;
+					log_write(log, INFO_L, "Player %03d is connected at court 000 for team %d\n", msg.m_player_id, connected_players % 2);
 					connected_players++;
+				}
 				free(player_fifo_name);
 			}
 		}
@@ -155,22 +166,23 @@ void match_play(match_t* match, log_t* log){
 		// Determinate the winner of the set
 		unsigned long int score_home = 0, score_away = 0;
 		for (i = 0; i < PLAYERS_PER_MATCH; i++) {
-			if (i < PLAYERS_PER_TEAM)
+			if (match->player_team[i] == 0)
 				score_home += players_scores[i];
 			else
 				score_away += players_scores[i];
 		}
 
-		if(score_home > score_away)
+		if (score_home > score_away)
 			match->sets_won_home++;
 		else
 			match->sets_won_away++;
+
 		// If any won SETS_WINNING sets than the other, match over
 		if(match->sets_won_home == SETS_WINNING)
 			break;
 		if(match->sets_won_away == SETS_WINNING)
 			break;	
-		}
+	}
 		
 	// Here we make the players stop the match
 	for (i = 0; i < PLAYERS_PER_MATCH; i++) {
@@ -179,10 +191,18 @@ void match_play(match_t* match, log_t* log){
 	}
 
 	// Close pipes and show final results
-	if(match->sets_won_home > match->sets_won_away)
+	// TODO: watch out for this homebrew method for mantain global score, it's rubbish!
+	if(match->sets_won_home > match->sets_won_away) {
 		log_write(log, NONE_L, "Team 1 won!\n");
-	else
+		for (i = 0; i < PLAYERS_PER_MATCH; i++)
+			if (match->player_team[i] == 0)
+				match->player_points[i]++;
+	} else {
 		log_write(log, NONE_L, "Team 2 won!\n");	
+		for (i = 0; i < PLAYERS_PER_MATCH; i++)
+			if (match->player_team[i] == 1)
+				match->player_points[i]++;
+	}
 }
 
 /* Finish the current set by signaling

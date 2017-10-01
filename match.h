@@ -37,6 +37,11 @@ typedef struct match_ {
 	bool close_pipes;
 	uint8_t sets_won_home;
 	uint8_t sets_won_away;
+
+	// Temporary!!
+	uint8_t player_points[PLAYERS_PER_MATCH];
+	unsigned int player_connected[PLAYERS_PER_MATCH];
+	unsigned int player_team[PLAYERS_PER_MATCH];
 } match_t;
 
 /* Dynamically creates a new match. Returns
