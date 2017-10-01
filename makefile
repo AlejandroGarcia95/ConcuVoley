@@ -3,6 +3,7 @@ ARCHIVOS = log.o player.o namegen.o confparser.o match.o
 PROGRAMA = main
 
 all: $(ARCHIVOS) $(PROGRAMA).o
+	@mkdir -p fifos
 	gcc -o $(PROGRAMA) $^
 	./$(PROGRAMA)
 

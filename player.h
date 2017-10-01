@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include "log.h"
 
 #define NAME_MAX_LENGTH 50
 
@@ -70,5 +71,7 @@ void player_stop_playing();
 
 /* Makes player stop playing.*/
 void player_start_playing();
+
+void do_in_player(int pipes[2], log_t* log);
 
 #endif

@@ -17,88 +17,6 @@
 
 #define LOG_ROUTE "ElLog.txt"
 
-/* Handler function for a player process.
- * It should only be used with SIG_SET
- * signal. Makes the player stop playing 
- * the set if they were playing.*/
-void handler_players_set(int signum) {
-	assert(signum == SIG_SET);
-	// Check if set is to start or finish
-	if(player_is_playing()) 
-		player_stop_playing();
-}
-
-/* Function that makes the process adopt
- * a player's role. Basically, it creates
- * a player, and make them play a match.
- * Every set of the match starts when the
- * main process sends a "start playing" 
- * message through the pipe, and ends when
- * the player receives a SIG_SET signal 
- * (as a set could end unexpectedly). At
- * the end of each set, the player must
- * send through the pipe their score.*/
-void do_in_player(int pipes[2], log_t* log){
-	// Re-srand with a changed seed
-	srand(time(NULL) ^ (getpid() << 16));
-	char p_name[NAME_MAX_LENGTH];
-	generate_random_name(p_name);
-	
-	player_t* player = player_get_instance();
-	if(!player){
-		close(pipes[PIPE_WRITE]);
-		close(pipes[PIPE_READ]);
-		return;
-		}
-	player_set_name(p_name);
-	
-	log_write(log, INFO_L, "Created new player: %s\n", p_name);
-	log_write(log, INFO_L, "%s skill is: %d\n", p_name, player_get_skill());
-	
-	// Set the hanlder for the SIG_SET signal
-	struct sigaction sa;
-	sigset_t sigset;	
-	sigemptyset(&sa.sa_mask);
-	sa.sa_flags = 0;
-	sa.sa_handler = handler_players_set;
-	sigaction(SIG_SET, &sa, NULL);
-	
-	// Here the player is on "waiting for playing"
-	// status. Will go on when the main process
-	// sends him a message for doing so.
-	char msg = 1;
-	while(msg == 1){
-		int msg_bytes = read(pipes[PIPE_READ], &msg, sizeof(char));
-		
-		if(msg_bytes < 0){
-			log_write(log, ERROR_L, "Player %s: bad read\n", p_name);
-			close(pipes[PIPE_WRITE]);
-			close(pipes[PIPE_READ]);
-			return;
-			}
-
-		// msg = 1 for now is the "start playing" message
-		if(msg == 1){
-			unsigned long int set_score = 0;
-			// Play the set until it's done (by SIG_SET)
-			log_write(log, INFO_L, "Player %s started playing\n", p_name);
-			player_start_playing();
-			player_play_set(&set_score);
-			// When set is finished, we use the pipe to
-			// send main process our set_score
-			write(pipes[PIPE_WRITE], &set_score, sizeof(set_score));
-			log_write(log, INFO_L, "Player %s stopped playing\n", p_name);
-			}
-		else
-			log_write(log, INFO_L, "Player %s: wont start playing\n", p_name);
-		}
-	 
-	close(pipes[PIPE_WRITE]);
-	close(pipes[PIPE_READ]);
-	player_destroy(player);
-	// Beware! Returns to main!
-}
-
 /* Launches a new process which will assume a
  * player's role. Each player is given a sort
  * of bidirectional pipe for comunicating with
@@ -111,29 +29,29 @@ void do_in_player(int pipes[2], log_t* log){
 int launch_player(int pipes[2], log_t* log){
 	static int this_player_id = 0; // useless by the time being, but helpful in the future
 
-    // Create pipes between player and main process
-    int fd_main_to_player[2], fd_player_to_main[2];
-    if(pipe(fd_main_to_player) < 0){
+	// Create pipes between player and main process
+	int fd_main_to_player[2], fd_player_to_main[2];
+	if(pipe(fd_main_to_player) < 0){
 		log_write(log, ERROR_L, "Pipe creation failed!\n");
 		return -1;
-		}
-    
-    if(pipe(fd_player_to_main) < 0){
+	}
+
+	if(pipe(fd_player_to_main) < 0){
 		log_write(log, ERROR_L, "Pipe creation failed!\n");
 		close(fd_main_to_player[PIPE_WRITE]);
 		close(fd_main_to_player[PIPE_READ]);
 		return -1;
-		}
+	}
 	// New process, new player!
 	pid_t pid = fork();
-	
+
 	if(pid < 0){ // Error
 		close(fd_player_to_main[PIPE_WRITE]);
 		close(fd_player_to_main[PIPE_READ]);
 		close(fd_main_to_player[PIPE_WRITE]);
 		close(fd_main_to_player[PIPE_READ]);
 		return -1;
-		}
+	}
 	else if(pid == 0){ // Son aka player
 		close(fd_main_to_player[PIPE_WRITE]);
 		close(fd_player_to_main[PIPE_READ]);
@@ -141,15 +59,15 @@ int launch_player(int pipes[2], log_t* log){
 		player_pipes[PIPE_WRITE] = fd_player_to_main[PIPE_WRITE];
 		player_pipes[PIPE_READ] = fd_main_to_player[PIPE_READ];
 		do_in_player(player_pipes, log);
-		}
+	}
 	else { // Father aka main process
 		close(fd_main_to_player[PIPE_READ]);
 		close(fd_player_to_main[PIPE_WRITE]);
 		pipes[PIPE_WRITE] = fd_main_to_player[PIPE_WRITE];
 		pipes[PIPE_READ] = fd_player_to_main[PIPE_READ];
 		this_player_id++;
-		}
-		return 0;
+	}
+	return 0;
 }
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
