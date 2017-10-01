@@ -144,6 +144,9 @@ void player_start_playing(){
 
 /* Returns player's fifo filename 
  * WARNING: returned value must be freed! */
+// Prop: Change signature to "bool get_player_fifo_name(unsigned int id, char* dest_buffer)"
+// And, another note... why should this function be here? It should
+// belong to the protocol library, not player's I think
 char* get_player_fifo_name(unsigned int id) {
 	char* player_fifo_name = malloc(sizeof(char) * MAX_FIFO_NAME_LEN);
 	sprintf(player_fifo_name, "fifos/player_%03d.fifo", id);
@@ -169,7 +172,6 @@ void player_play_set(unsigned long int* set_score){
 	}
 }
 
-
 /* Handler function for a player process.
  * It should only be used with SIG_SET
  * signal. Makes the player stop playing 
@@ -181,11 +183,9 @@ void handler_players_set(int signum) {
 		player_stop_playing();
 }
 
-
-
+// TODO: documentation xd
 void player_join_match(player_t* player, log_t* log) {
 	// Joining lobby!!
-
 	char* p_name;
 	p_name = player->name;
 	// Open court fifo
@@ -220,6 +220,7 @@ void player_join_match(player_t* player, log_t* log) {
 
 
 	// Here the player has joinned a match, it's waiting for "set start signal"
+	// Not a signal, but a message!
 	// TODO: put all this in a separate function
 	while(msg.m_type != MSG_MATCH_END){
 
@@ -243,7 +244,7 @@ void player_join_match(player_t* player, log_t* log) {
 			player_start_playing();
 			player_play_set(&set_score);
 			msg.m_score = set_score;
-			// When set is finished, we use the pipe to
+			// When set is finished, we use the fifo to
 			// send main process our set_score
 			if (write(court_fifo, &msg, sizeof(message_t)) < 0)
 				log_write(log, ERROR_L, "Player %03d cannot write in court 000 [errno: %d]\n", player->id, errno);
@@ -252,6 +253,7 @@ void player_join_match(player_t* player, log_t* log) {
 			log_write(log, INFO_L, "Player %s: wont start playing\n", p_name);
 			miss_count++;
 			if (miss_count >= 100) {
+				// Have to really praise you for this
 				log_write(log, CRITICAL_L, "Have to shut down player %s [%03d]: wont start playing too many times (maybe deadlock)\n", p_name, player->id);
 				exit(-1);
 			}
@@ -270,11 +272,11 @@ void player_join_match(player_t* player, log_t* log) {
  * a player, and make them play a match.
  * Every set of the match starts when the
  * main process sends a "start playing" 
- * message through the pipe, and ends when
+ * message through the fifo, and ends when
  * the player receives a SIG_SET signal 
  * (as a set could end unexpectedly). At
  * the end of each set, the player must
- * send through the pipe their score.*/
+ * send through the fifo their score.*/
 void player_main(unsigned int id, log_t* log) {
 	// Re-srand with a changed seed
 	srand(time(NULL) ^ (getpid() << 16));
@@ -298,11 +300,12 @@ void player_main(unsigned int id, log_t* log) {
 	sa.sa_flags = 0;
 	sa.sa_handler = handler_players_set;
 	sigaction(SIG_SET, &sa, NULL);
-
-	for (int i = 0; i < NUM_MATCHES; i++) {
+	int i;
+	for (i = 0; i < NUM_MATCHES; i++) {
 		player_join_match(player, log);
 		
 		// Wait some tame before joining again
+		// TODO: Change for wait/broadcast or similar
 		unsigned long int t_rand = rand() % 2000000;
 		usleep(t_rand);
 	}

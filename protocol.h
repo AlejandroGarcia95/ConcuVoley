@@ -40,4 +40,10 @@ struct message {
 
 typedef struct message message_t;
 
+// Prop: Create a function "message_create(m_type, m_id, m_score)"
+// for shortening code
+
+// Prop 2: Create primitives like "send msg" or "receive msg" in order
+// to avoid writing reads and writes and error checks all over the code
+
 #endif //PROTOCOL_H

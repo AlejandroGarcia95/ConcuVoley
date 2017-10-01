@@ -19,7 +19,7 @@ $(PROGRAMA): $(ARCHIVOS) $(PROGRAMA).o
 clean:
 	rm -f $(PROGRAMA) *.o
 	rm -f fifos/*
-	rmdir fifos
+	rm fifos
 
 valgrind: clean $(PROGRAMA)
 	valgrind $(VFLAGS) ./$(PROGRAMA)

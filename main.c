@@ -31,11 +31,15 @@
 int launch_player(unsigned int player_id, log_t* log) {
 
 	// Note: this static variable seems not to work for some reason...
+	// Really? I was sure I could test it working
+	// properly before... although it ain't that dramatic
 	// static int player_id = 0;
 
 	log_write(log, INFO_L, "Launching player %03d!\n", player_id);
 
 	// Create the fifo for the player.
+	// Prop: Create a fifo TDA to encapsule things like this create...
+	// It's like the third time I've seen it in the code
 	char* player_fifo_name = malloc(sizeof(char) * MAX_FIFO_NAME_LEN);
 	sprintf(player_fifo_name, "fifos/player_%03d.fifo", player_id);
 	if (mknod(player_fifo_name, FIFO_CREAT_FLAGS, 0) < 0) {
@@ -87,9 +91,9 @@ int main(int argc, char **argv){
 	// We want main process to ignore SIG_SET signal as
 	// it's just for players processes
 	signal(SIG_SET, SIG_IGN);
-	
+	int i, j;
 	// Launch players processes
-	for(int i = 0; i < PLAYERS_PER_MATCH; i++){
+	for(i = 0; i < PLAYERS_PER_MATCH; i++){
 		if (getpid() == main_pid)
 			launch_player(i, log);
 	}
@@ -108,11 +112,11 @@ int main(int argc, char **argv){
 	// Launch a single match, then end the tournament
 	match_t* match = match_create(log);
 	
-	for (int j = 0; j < NUM_MATCHES; j++) {
+	for (j = 0; j < NUM_MATCHES; j++) {
 		match_lobby(match, log);
 	}
 	
-	for (int i = 0; i < PLAYERS_PER_MATCH; i++) {
+	for (i = 0; i < PLAYERS_PER_MATCH; i++) {
 		log_write(log, INFO_L, "Player %03d won a total of %d matches\n", i, match->player_points[i]);
 	}
 

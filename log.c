@@ -5,6 +5,13 @@
 #include <sys/time.h>
 #include "log.h"
 
+/* Important comment about the log: La consigna dice que debería
+ * tener un "modo debug" y que los mensajes de debug sólo se deberían
+ * imprimir en ese modo... Es decir, habría que agregar un flag en
+ * el log_open y que en el log_write sólo imprima los mensajes de E,W,I
+ * si el flag está en 1
+ * */
+
 /* Auxiliar function that creates a pretty-printeable
  * time string. The final string is stored at str.*/
 void get_time_string(log_t* log, char* str){
@@ -73,6 +80,7 @@ int log_write(log_t* log, log_level lvl, char* msg, ... ){
 	}
 		
 	// TODO: Add colors maybe? \x1b[32m \x1b[37;1
+	// Strongly agree to it
 	char* str_lvl;
 	switch(lvl){
 		case INFO_L: 

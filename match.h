@@ -2,6 +2,7 @@
 #define MATCH_H
 
 // IT IS BACK, AND WITH PIPES!!
+// Prop: Rename as "court"
 
 #include <stdio.h>
 #include <stdint.h>
@@ -34,7 +35,7 @@ typedef struct match_ {
 	int player_fifos[PLAYERS_PER_MATCH];
 	int court_fifo;
 	char* court_fifo_name;
-	bool close_pipes;
+	bool close_pipes; // close_fifos
 	uint8_t sets_won_home;
 	uint8_t sets_won_away;
 
