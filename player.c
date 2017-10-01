@@ -142,12 +142,14 @@ void player_start_playing(){
 }
 
 
+/* Returns player's fifo filename 
+ * WARNING: returned value must be freed! */
 char* player_get_fifo_name() {
 	player_t* player = player_get_instance();
 	if (!player)
 		return NULL;
-	char* player_fifo_name = malloc(sizeof(char) * 50);
-	sprintf(player_fifo_name, "fifos/player_%d.fifo", player->id);
+	char* player_fifo_name = malloc(sizeof(char) * MAX_FIFO_NAME_LEN);
+	sprintf(player_fifo_name, "fifos/player_%03d.fifo", player->id);
 	return player_fifo_name;
 }
 
@@ -166,7 +168,7 @@ void player_play_set(unsigned long int* set_score){
 	while(player_is_playing()){
 		emulate_score_time();
 		(*set_score)++;
-		}
+	}
 }
 
 
@@ -191,7 +193,7 @@ void handler_players_set(int signum) {
  * (as a set could end unexpectedly). At
  * the end of each set, the player must
  * send through the pipe their score.*/
-void player_main(int id, log_t* log) {
+void player_main(unsigned int id, log_t* log) {
 	// Re-srand with a changed seed
 	srand(time(NULL) ^ (getpid() << 16));
 	char p_name[NAME_MAX_LENGTH];
@@ -204,7 +206,7 @@ void player_main(int id, log_t* log) {
 	player->id = id;
 	player_set_name(p_name);
 	
-	log_write(log, INFO_L, "Created new player: %s\n", p_name);
+	log_write(log, INFO_L, "Created new player [%03d]: %s\n", player->id, p_name);
 	log_write(log, INFO_L, "%s skill is: %d\n", p_name, player_get_skill());
 	
 	// Set the hanlder for the SIG_SET signal
@@ -220,20 +222,21 @@ void player_main(int id, log_t* log) {
 	char* court_fifo_name = "fifos/court.fifo";
 	int court_fifo = open(court_fifo_name, O_WRONLY);
 	if (court_fifo < 0) {
-		log_write(log, ERROR_L, "Error opening court fifo! %d\n", errno);
+		log_write(log, ERROR_L, "FIFO opening error for court 000 at player %03d [errno: %d]\n", player->id, errno);
 		exit(-1);
 	}
-	log_write(log, INFO_L, "Player opened court fifo: %d\n", player->id);
+	log_write(log, INFO_L, "Player %03d opened court 000 FIFO\n", player->id);
 
 	// Open self fifo
 	char* my_fifo_name = player_get_fifo_name();
 	int my_fifo = open(my_fifo_name, O_RDONLY);
 	if (my_fifo < 0) {
-		log_write(log, ERROR_L, "Error opening player fifo!\n");
+		log_write(log, ERROR_L, "FIFO opening error for player %03d at player %03d [errno: %d]\n", player->id, player->id, errno);
 		exit(-1);
 	}
 	free(my_fifo_name);
-	log_write(log, INFO_L, "Player opened self fifo: %d\n", player->id);
+	log_write(log, INFO_L, "Player %03d opened self FIFO\n", player->id);
+
 	// Here the player is on "waiting for playing"
 	// status. Will go on when the main process
 	// sends him a message for doing so.
@@ -260,7 +263,7 @@ void player_main(int id, log_t* log) {
 			// When set is finished, we use the pipe to
 			// send main process our set_score
 			if (write(court_fifo, &m, sizeof(m)) < 0)
-				log_write(log, ERROR_L, "Player cannto write in court %d - %d\n", player->id, errno);
+				log_write(log, ERROR_L, "Player %03d cannot write in court 000 [errno: %d]\n", player->id, errno);
 			log_write(log, INFO_L, "Player %s stopped playing (scored %lu)\n", p_name, set_score);
 		} else {
 			log_write(log, INFO_L, "Player %s: wont start playing\n", p_name);
@@ -268,6 +271,9 @@ void player_main(int id, log_t* log) {
 	}
 
 	player_destroy(player);
+
+	log_close(log);
+	exit(-1);
 	// Beware! Returns to main!
 }
 

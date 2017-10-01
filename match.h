@@ -17,8 +17,9 @@
 #define SETS_WINNING 3
 #define SET_DURATION 6
 
-#define PIPE_READ 0
-#define PIPE_WRITE 1
+// Deprecated, not in use now
+//#define PIPE_READ 0
+//#define PIPE_WRITE 1
 
 #define SIG_SET SIGUSR1
 

@@ -18,36 +18,31 @@
 #include "match.h"
 #include "namegen.h"
 
+#include "protocol.h"
+
 #define LOG_ROUTE "ElLog.txt"
 
 /* Launches a new process which will assume a
- * player's role. Each player is given a sort
- * of bidirectional pipe for comunicating with
- * the main process. After launching the new 
+ * player's role. Each player is given an id, from which
+ * the fifo of the player can be obtained. After launching the new 
  * player process, this function must call the
- * do_in_player function to allow it to play 
- * against other in a match. Note the main
- * process can comunicate with a bidirectional
- * pipe of his own.*/
-int launch_player(int this_player_id, log_t* log){
-	//static int this_player_id = 0; // useless by the time being, but helpful in the future
-	log_write(log, INFO_L, "Launching player %d!\n", this_player_id);
+ * player_main function to allow it to play 
+ * against other in a match. */
+int launch_player(unsigned int player_id, log_t* log) {
 
-	// Create and open the fifo for the player.
-	char* player_fifo_name = malloc(sizeof(char) * 20);
-	sprintf(player_fifo_name, "fifos/player_%d.fifo", this_player_id);
+	// Note: this static variable seems not to work for some reason...
+	// static int player_id = 0;
 
-	if (mknod(player_fifo_name, S_IFIFO | 0666, 0) < 0) {
-		log_write(log, ERROR_L, "Fifo creation (mknod) failed (payer %d) - %d!\n", this_player_id, errno);
+	log_write(log, INFO_L, "Launching player %03d!\n", player_id);
+
+	// Create the fifo for the player.
+	char* player_fifo_name = malloc(sizeof(char) * MAX_FIFO_NAME_LEN);
+	sprintf(player_fifo_name, "fifos/player_%03d.fifo", player_id);
+	if (mknod(player_fifo_name, FIFO_CREAT_FLAGS, 0) < 0) {
+		log_write(log, ERROR_L, "FIFO creation error for player %03d [errno: %d]\n", player_id, errno);
+		free(player_fifo_name);
 		return -1;
 	}
-	/*
-	int new_fifo_fd = open(player_fifo_name, O_WRONLY);
-	if (new_fifo_fd < 0) {
-		log_write(log, ERROR_L, "Fifo opening failed (payer %d), %d!\n", this_player_id, errno);
-		return -1;
-	}
-	*/
 	free(player_fifo_name);
 
 	// New process, new player!
@@ -56,10 +51,10 @@ int launch_player(int this_player_id, log_t* log){
 	if (pid < 0) { // Error
 		log_write(log, ERROR_L, "Fork failed!\n");
 		return -1;
-	} else if(pid == 0) { // Son aka player
-		player_main(this_player_id, log);
+	} else if (pid == 0) { // Son aka player
+		player_main(player_id, log);
 	} else { // Father aka main process
-		this_player_id++;
+		player_id++;
 	}
 	return 0;
 }
@@ -96,10 +91,10 @@ int main(int argc, char **argv){
 	int i, j;
 	// Launch players processes
 	for(i = 0; i < PLAYERS_PER_MATCH; i++){
-		if(getpid() == main_pid)
+		if (getpid() == main_pid)
 			launch_player(i, log);
 	}
-			
+
 	// The children/player processes reach here
 	// once they're done playing the matches.
 	// Then, if we're a player, we should die here
@@ -110,7 +105,8 @@ int main(int argc, char **argv){
 		// be changed by an exit() later.
 		return 0;
 	}
-	
+
+	// Launch a single match, then end the tournament
 	match_t* match = match_create(true, log);
 	
 	match_play(match, log);
