@@ -3,10 +3,14 @@
 #include <stdbool.h>
 #include <string.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <signal.h>
 #include <assert.h>
+#include <errno.h>
 #include "player.h"
 #include "match.h"
+
+#include "protocol.h"
 
 // In microseconds!
 #define MIN_SCORE_TIME 15000
@@ -58,6 +62,7 @@ player_t* player_create(){
 	player->skill = generate_random_skill();
 	player->matches_played = 0;
 	player->currently_playing = false;
+	player->id = 0;
 	return player;
 }
 
@@ -136,6 +141,16 @@ void player_start_playing(){
 		player->currently_playing = true;
 }
 
+
+char* player_get_fifo_name() {
+	player_t* player = player_get_instance();
+	if (!player)
+		return NULL;
+	char* player_fifo_name = malloc(sizeof(char) * 50);
+	sprintf(player_fifo_name, "fifos/player_%d.fifo", player->id);
+	return player_fifo_name;
+}
+
 /* Make this player play the current set
  * storing their score in the set_score
  * variable. This function should do the
@@ -176,18 +191,17 @@ void handler_players_set(int signum) {
  * (as a set could end unexpectedly). At
  * the end of each set, the player must
  * send through the pipe their score.*/
-void do_in_player(int pipes[2], log_t* log){
+void player_main(int id, log_t* log) {
 	// Re-srand with a changed seed
 	srand(time(NULL) ^ (getpid() << 16));
 	char p_name[NAME_MAX_LENGTH];
 	generate_random_name(p_name);
 	
 	player_t* player = player_get_instance();
-	if(!player){
-		close(pipes[PIPE_WRITE]);
-		close(pipes[PIPE_READ]);
-		return;
-	}
+	if(!player)
+		exit(-1);
+
+	player->id = id;
 	player_set_name(p_name);
 	
 	log_write(log, INFO_L, "Created new player: %s\n", p_name);
@@ -201,38 +215,58 @@ void do_in_player(int pipes[2], log_t* log){
 	sa.sa_handler = handler_players_set;
 	sigaction(SIG_SET, &sa, NULL);
 	
+
+	// Open court fifo
+	char* court_fifo_name = "fifos/court.fifo";
+	int court_fifo = open(court_fifo_name, O_WRONLY);
+	if (court_fifo < 0) {
+		log_write(log, ERROR_L, "Error opening court fifo! %d\n", errno);
+		exit(-1);
+	}
+	log_write(log, INFO_L, "Player opened court fifo: %d\n", player->id);
+
+	// Open self fifo
+	char* my_fifo_name = player_get_fifo_name();
+	int my_fifo = open(my_fifo_name, O_RDONLY);
+	if (my_fifo < 0) {
+		log_write(log, ERROR_L, "Error opening player fifo!\n");
+		exit(-1);
+	}
+	free(my_fifo_name);
+	log_write(log, INFO_L, "Player opened self fifo: %d\n", player->id);
 	// Here the player is on "waiting for playing"
 	// status. Will go on when the main process
 	// sends him a message for doing so.
 	char msg = 1;
 	while(msg == 1){
-		int msg_bytes = read(pipes[PIPE_READ], &msg, sizeof(char));
+		int msg_bytes = read(my_fifo, &msg, sizeof(char));
 		
-		if(msg_bytes < 0){
+		if(msg_bytes < 0) {
 			log_write(log, ERROR_L, "Player %s: bad read\n", p_name);
-			close(pipes[PIPE_WRITE]);
-			close(pipes[PIPE_READ]);
-			return;
-			}
+			exit(-1);
+		}
 
 		// msg = 1 for now is the "start playing" message
-		if(msg == 1){
+		if(msg == 1) {
 			unsigned long int set_score = 0;
+			message_t m = {};
+			m.player_id = player->id;
+	
 			// Play the set until it's done (by SIG_SET)
 			log_write(log, INFO_L, "Player %s started playing\n", p_name);
 			player_start_playing();
 			player_play_set(&set_score);
+			m.score = set_score;
 			// When set is finished, we use the pipe to
 			// send main process our set_score
-			write(pipes[PIPE_WRITE], &set_score, sizeof(set_score));
-			log_write(log, INFO_L, "Player %s stopped playing\n", p_name);
-			}
-		else
+			if (write(court_fifo, &m, sizeof(m)) < 0)
+				log_write(log, ERROR_L, "Player cannto write in court %d - %d\n", player->id, errno);
+			log_write(log, INFO_L, "Player %s stopped playing (scored %lu)\n", p_name, set_score);
+		} else {
 			log_write(log, INFO_L, "Player %s: wont start playing\n", p_name);
 		}
-	 
-	close(pipes[PIPE_WRITE]);
-	close(pipes[PIPE_READ]);
+	}
+
 	player_destroy(player);
 	// Beware! Returns to main!
 }

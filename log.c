@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <stdarg.h>
-#include <time.h>
+#include <sys/time.h>
 #include "log.h"
 
 /* Auxiliar function that creates a pretty-printeable
@@ -12,7 +12,7 @@ void get_time_string(log_t* log, char* str){
 	gettimeofday (&time_now, NULL);
 	
 	unsigned long int timestamp = (time_now.tv_sec - log->time_created.tv_sec)*1000000L;
-    timestamp += (time_now.tv_usec - log->time_created.tv_usec);
+	timestamp += (time_now.tv_usec - log->time_created.tv_usec);
 	 // Check microseconds
 	if(timestamp < 1000L)
 		sprintf(str, "%lu Us", timestamp);

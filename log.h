@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <stdarg.h>
-#include <time.h>
+#include <sys/time.h>
 
 /* Log structure used to represent the log. 
  * Shall we add more fields to it? */

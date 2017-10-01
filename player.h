@@ -23,6 +23,7 @@
  * and a matches_played field which counts how 
  * many matches the player has been in.*/
 typedef struct player_ {
+	int id;
 	char name[NAME_MAX_LENGTH];
 	size_t skill;
 	size_t matches_played;
@@ -72,6 +73,6 @@ void player_stop_playing();
 /* Makes player stop playing.*/
 void player_start_playing();
 
-void do_in_player(int pipes[2], log_t* log);
+void player_main(int id, log_t* log);
 
 #endif

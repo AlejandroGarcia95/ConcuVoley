@@ -3,12 +3,15 @@
 #include <stdbool.h>
 #include <string.h>
 #include <signal.h>
+#include <fcntl.h>
 #include <sys/types.h>
-#include <sys/ipc.h> 
+#include <sys/ipc.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <assert.h>
 #include <sys/wait.h>
 #include <time.h>
+#include <errno.h>
 #include "confparser.h"
 #include "log.h"
 #include "player.h"
@@ -26,45 +29,36 @@
  * against other in a match. Note the main
  * process can comunicate with a bidirectional
  * pipe of his own.*/
-int launch_player(int pipes[2], log_t* log){
-	static int this_player_id = 0; // useless by the time being, but helpful in the future
+int launch_player(int this_player_id, log_t* log){
+	//static int this_player_id = 0; // useless by the time being, but helpful in the future
+	log_write(log, INFO_L, "Launching player %d!\n", this_player_id);
 
-	// Create pipes between player and main process
-	int fd_main_to_player[2], fd_player_to_main[2];
-	if(pipe(fd_main_to_player) < 0){
-		log_write(log, ERROR_L, "Pipe creation failed!\n");
+	// Create and open the fifo for the player.
+	char* player_fifo_name = malloc(sizeof(char) * 20);
+	sprintf(player_fifo_name, "fifos/player_%d.fifo", this_player_id);
+
+	if (mknod(player_fifo_name, S_IFIFO | 0666, 0) < 0) {
+		log_write(log, ERROR_L, "Fifo creation (mknod) failed (payer %d) - %d!\n", this_player_id, errno);
 		return -1;
 	}
-
-	if(pipe(fd_player_to_main) < 0){
-		log_write(log, ERROR_L, "Pipe creation failed!\n");
-		close(fd_main_to_player[PIPE_WRITE]);
-		close(fd_main_to_player[PIPE_READ]);
+	/*
+	int new_fifo_fd = open(player_fifo_name, O_WRONLY);
+	if (new_fifo_fd < 0) {
+		log_write(log, ERROR_L, "Fifo opening failed (payer %d), %d!\n", this_player_id, errno);
 		return -1;
 	}
+	*/
+	free(player_fifo_name);
+
 	// New process, new player!
 	pid_t pid = fork();
 
-	if(pid < 0){ // Error
-		close(fd_player_to_main[PIPE_WRITE]);
-		close(fd_player_to_main[PIPE_READ]);
-		close(fd_main_to_player[PIPE_WRITE]);
-		close(fd_main_to_player[PIPE_READ]);
+	if (pid < 0) { // Error
+		log_write(log, ERROR_L, "Fork failed!\n");
 		return -1;
-	}
-	else if(pid == 0){ // Son aka player
-		close(fd_main_to_player[PIPE_WRITE]);
-		close(fd_player_to_main[PIPE_READ]);
-		int player_pipes[2];
-		player_pipes[PIPE_WRITE] = fd_player_to_main[PIPE_WRITE];
-		player_pipes[PIPE_READ] = fd_main_to_player[PIPE_READ];
-		do_in_player(player_pipes, log);
-	}
-	else { // Father aka main process
-		close(fd_main_to_player[PIPE_READ]);
-		close(fd_player_to_main[PIPE_WRITE]);
-		pipes[PIPE_WRITE] = fd_main_to_player[PIPE_WRITE];
-		pipes[PIPE_READ] = fd_player_to_main[PIPE_READ];
+	} else if(pid == 0) { // Son aka player
+		player_main(this_player_id, log);
+	} else { // Father aka main process
 		this_player_id++;
 	}
 	return 0;
@@ -86,14 +80,14 @@ int main(int argc, char **argv){
 	if(!log){
 		printf("FATAL: No log could be opened!\n");
 		return -1;
-		}
+	}
 	log_write(log, NONE_L, "Let the tournament begin!\n");
+
 	// "Remember who you are and where you come from; 
 	// otherwise, you don't know where you are going."
 	pid_t main_pid = getpid();
 
 	// Let's launch player processes and make them play, yay!
-	int pipes[PLAYERS_PER_MATCH][2] = {};
 	
 	// We want main process to ignore SIG_SET signal as
 	// it's just for players processes
@@ -103,8 +97,8 @@ int main(int argc, char **argv){
 	// Launch players processes
 	for(i = 0; i < PLAYERS_PER_MATCH; i++){
 		if(getpid() == main_pid)
-			launch_player(&pipes[i][0], log);	
-		}
+			launch_player(i, log);
+	}
 			
 	// The children/player processes reach here
 	// once they're done playing the matches.
@@ -115,9 +109,9 @@ int main(int argc, char **argv){
 		// properly testing the children with valgrind. Should
 		// be changed by an exit() later.
 		return 0;
-		}
+	}
 	
-	match_t* match = match_create(pipes, true);
+	match_t* match = match_create(true, log);
 	
 	match_play(match, log);
 	
