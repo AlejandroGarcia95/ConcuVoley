@@ -107,9 +107,9 @@ int main(int argc, char **argv){
 	}
 
 	// Launch a single match, then end the tournament
-	match_t* match = match_create(true, log);
+	match_t* match = match_create(log);
 	
-	match_play(match, log);
+	match_lobby(match, log);
 	
 	match_destroy(match);		
 	log_close(log);

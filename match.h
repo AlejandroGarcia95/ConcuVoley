@@ -31,8 +31,9 @@
  * bool close_pipes field determinates if
  * the match is to close them.*/
 typedef struct match_ {
-	int fifos[PLAYERS_PER_MATCH];
-	int my_fifo;
+	int player_fifos[PLAYERS_PER_MATCH];
+	int court_fifo;
+	char* court_fifo_name;
 	bool close_pipes;
 	uint8_t sets_won_home;
 	uint8_t sets_won_away;
@@ -51,7 +52,7 @@ typedef struct match_ {
  * with them are the ones received.
  * Pre 2: The players processes ARE CHILDREN
  * PROCESSES of the process using this match.*/
-match_t* match_create(bool close_pipes, log_t* log);
+match_t* match_create(log_t* log);
 
 /* Kills the received match and sends flowers
  * to his widow.*/
@@ -66,6 +67,7 @@ void match_destroy(match_t* match);
  * function also closes the pipes file des-
  * criptors at the end of the match. */
 void match_play(match_t* match, log_t* log);
+void match_lobby(match_t* match, log_t* log);
 
 /* Finish the current set by signaling
  * the players with SIG_SET.*/

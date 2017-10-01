@@ -1,6 +1,9 @@
 #ifndef PROTOCOL_H
 #define PROTOCOL_H
 
+#include <stdio.h>
+#include <stdlib.h>
+
 #define MAX_FIFO_NAME_LEN 50
 #define FIFO_CREAT_FLAGS (S_IFIFO | 0666)
 
@@ -19,7 +22,9 @@
 
 typedef enum _msg_type {
 	MSG_PLAYER_JOIN_REQ = 0,
-	MSG_PLAYER_SCORE
+	MSG_PLAYER_SCORE,
+	MSG_SET_START,
+	MSG_MATCH_END
 } msg_type;
 
 
@@ -30,10 +35,5 @@ struct message {
 };
 
 typedef struct message message_t;
-
-
-
-
-
 
 #endif //PROTOCOL_H
