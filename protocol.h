@@ -17,9 +17,16 @@
  *	where {id} is your court_id, with exactly 3 digits
  */
 
+typedef enum _msg_type {
+	MSG_PLAYER_JOIN_REQ = 0,
+	MSG_PLAYER_SCORE
+} msg_type;
+
+
 struct message {
-	unsigned long int score;
-	unsigned int player_id;
+	msg_type m_type;
+	unsigned int m_player_id;
+	unsigned long int m_score;
 };
 
 typedef struct message message_t;

@@ -253,13 +253,14 @@ void player_main(unsigned int id, log_t* log) {
 		if(msg == 1) {
 			unsigned long int set_score = 0;
 			message_t m = {};
-			m.player_id = player->id;
+			m.m_type = MSG_PLAYER_SCORE;
+			m.m_player_id = player->id;
 	
 			// Play the set until it's done (by SIG_SET)
 			log_write(log, INFO_L, "Player %s started playing\n", p_name);
 			player_start_playing();
 			player_play_set(&set_score);
-			m.score = set_score;
+			m.m_score = set_score;
 			// When set is finished, we use the pipe to
 			// send main process our set_score
 			if (write(court_fifo, &m, sizeof(m)) < 0)

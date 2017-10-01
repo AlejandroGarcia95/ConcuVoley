@@ -7,6 +7,7 @@
 #include <unistd.h>
 #include <signal.h>
 #include <errno.h>
+#include <assert.h>
 #include "match.h"
 #include "log.h"
 #include "protocol.h"
@@ -98,10 +99,12 @@ void match_play(match_t* match, log_t* log){
 		// Wait for the four player's scores
 		message_t m = {};
 		for (i = 0; i < PLAYERS_PER_MATCH; i++){
-			if (read(match->my_fifo, &m, sizeof(m)) < 0)
+			if (read(match->my_fifo, &m, sizeof(m)) < 0) {
 				log_write(log, ERROR_L, "Error reading score from player %03d at court 000 [errno: %d]\n", i, errno);
-			else
-				players_scores[m.player_id] = m.score;
+			} else {
+				assert(m.m_type == MSG_PLAYER_SCORE);
+				players_scores[m.m_player_id] = m.m_score;
+			}
 		}
 		// Show this set score
 		for(i = 0; i < PLAYERS_PER_MATCH; i++)
