@@ -8,7 +8,7 @@
 #include <assert.h>
 #include <errno.h>
 #include "player.h"
-#include "match.h"
+#include "court.h"
 
 #include "protocol.h"
 
@@ -60,7 +60,7 @@ player_t* player_create(){
 	
 	// Initialize fields
 	player->skill = generate_random_skill();
-	player->matches_played = 0;
+	player->courtes_played = 0;
 	player->currently_playing = false;
 	player->id = 0;
 	return player;
@@ -100,11 +100,11 @@ size_t player_get_skill(){
 	return (player ? player->skill : SKILL_MAX+8);
 }
 
-/* Returns the amount of matches played by the 
+/* Returns the amount of courtes played by the 
  * current player. */
-size_t player_get_matches(){
+size_t player_get_courtes(){
 	player_t* player = player_get_instance();
-	return (player ? player->matches_played : 0);
+	return (player ? player->courtes_played : 0);
 }
 
 /* Returns the name of the current player.*/
@@ -113,11 +113,11 @@ char* player_get_name(){
 	return (player ? player->name : NULL);
 }
 
-/*Increase by 1 the amount of matches played.*/
-void player_increase_matches_played(){
+/*Increase by 1 the amount of courtes played.*/
+void player_increase_courtes_played(){
 	player_t* player = player_get_instance();
 	if(player)
-		player->matches_played++;
+		player->courtes_played++;
 }
 
 /* Returns true or false if the player
@@ -139,18 +139,6 @@ void player_start_playing(){
 	player_t* player = player_get_instance();
 	if(player)
 		player->currently_playing = true;
-}
-
-
-/* Returns player's fifo filename 
- * WARNING: returned value must be freed! */
-// Prop: Change signature to "bool get_player_fifo_name(unsigned int id, char* dest_buffer)"
-// And, another note... why should this function be here? It should
-// belong to the protocol library, not player's I think
-char* get_player_fifo_name(unsigned int id) {
-	char* player_fifo_name = malloc(sizeof(char) * MAX_FIFO_NAME_LEN);
-	sprintf(player_fifo_name, "fifos/player_%03d.fifo", id);
-	return player_fifo_name;
 }
 
 
@@ -183,8 +171,50 @@ void handler_players_set(int signum) {
 		player_stop_playing();
 }
 
+// TODO: documentation
+void player_at_court(player_t* player, log_t* log, int court_fifo, int player_fifo) {
+	message_t msg = {};
+	char* p_name = player->name;
+	while(msg.m_type != MSG_MATCH_END){
+		// REMOVE ME
+		int miss_count = 0;
+
+		if(!receive_msg(player_fifo, &msg)) {
+			log_write(log, ERROR_L, "Player %s: bad read [errno: %d]\n", p_name, errno);
+			close(court_fifo);
+			close(player_fifo);
+			exit(-1);
+		}
+
+		if(msg.m_type == MSG_SET_START) {
+			unsigned long int set_score = 0;
+			msg.m_type = MSG_PLAYER_SCORE;
+			msg.m_player_id = player->id;
+	
+			// Play the set until it's done (by SIG_SET)
+			log_write(log, INFO_L, "Player %s started playing\n", p_name);
+			player_start_playing();
+			player_play_set(&set_score);
+			msg.m_score = set_score;
+			// When set is finished, we use the fifo to
+			// send main process our set_score
+			if(!send_msg(court_fifo, &msg))
+				log_write(log, ERROR_L, "Player %03d cannot write in court 000 [errno: %d]\n", player->id, errno);
+			log_write(log, INFO_L, "Player %s finished set (scored %lu)\n", p_name, set_score);
+		} else {
+			log_write(log, INFO_L, "Player %s: wont start playing\n", p_name);
+			miss_count++;
+			if (miss_count >= 100) {
+				// Have to really praise you for this
+				log_write(log, CRITICAL_L, "Have to shut down player %s [%03d]: wont start playing too many times (maybe deadlock)\n", p_name, player->id);
+				exit(-1);
+			}
+		}
+	}
+}
+
 // TODO: documentation xd
-void player_join_match(player_t* player, log_t* log) {
+void player_join_court(player_t* player, log_t* log) {
 	// Joining lobby!!
 	char* p_name;
 	p_name = player->name;
@@ -201,76 +231,40 @@ void player_join_match(player_t* player, log_t* log) {
 	message_t msg = {};
 	msg.m_type = MSG_PLAYER_JOIN_REQ;
 	msg.m_player_id = player->id;
-	if (write(court_fifo, &msg, sizeof(message_t)) < 0) {
+	if(!send_msg(court_fifo, &msg)){
 		log_write(log, ERROR_L, "Player %03d failed to write to court 000 [errno: %d]\n", player->id, errno);
 		close(court_fifo);
 		exit(-1);
 	}
 
-	// If accepted (to be implemented) join match
+	// If accepted (to be implemented) join court
 	// Open self fifo
-	char* my_fifo_name = get_player_fifo_name(player->id);
+	char my_fifo_name[MAX_FIFO_NAME_LEN];
+	if(!get_player_fifo_name(player->id, my_fifo_name)) {
+		log_write(log, ERROR_L, "FIFO opening error for player %03d at player %03d [errno: %d]\n", player->id, player->id, errno);
+		exit(-1);
+	}
 	int my_fifo = open(my_fifo_name, O_RDONLY);
 	if (my_fifo < 0) {
 		log_write(log, ERROR_L, "FIFO opening error for player %03d at player %03d [errno: %d]\n", player->id, player->id, errno);
 		exit(-1);
 	}
-	free(my_fifo_name);
 	log_write(log, INFO_L, "Player %03d opened self FIFO\n", player->id);
 
-
-	// Here the player has joinned a match, it's waiting for "set start signal"
-	// Not a signal, but a message!
-	// TODO: put all this in a separate function
-	while(msg.m_type != MSG_MATCH_END){
-
-		// REMOVE ME
-		int miss_count = 0;
-
-		if (read(my_fifo, &msg, sizeof(message_t)) < 0) {
-			log_write(log, ERROR_L, "Player %s: bad read [errno: %d]\n", p_name, errno);
-			close(court_fifo);
-			close(my_fifo);
-			exit(-1);
-		}
-
-		if(msg.m_type == MSG_SET_START) {
-			unsigned long int set_score = 0;
-			msg.m_type = MSG_PLAYER_SCORE;
-			msg.m_player_id = player->id;
+	// Here the player has joinned a court and is waiting for 
+	// "set start" message. Delegate behaviour on player_at_court
+	player_at_court(player, log, court_fifo, my_fifo);
 	
-			// Play the set until it's done (by SIG_SET)
-			log_write(log, INFO_L, "Player %s started playing\n", p_name);
-			player_start_playing();
-			player_play_set(&set_score);
-			msg.m_score = set_score;
-			// When set is finished, we use the fifo to
-			// send main process our set_score
-			if (write(court_fifo, &msg, sizeof(message_t)) < 0)
-				log_write(log, ERROR_L, "Player %03d cannot write in court 000 [errno: %d]\n", player->id, errno);
-			log_write(log, INFO_L, "Player %s finished set (scored %lu)\n", p_name, set_score);
-		} else {
-			log_write(log, INFO_L, "Player %s: wont start playing\n", p_name);
-			miss_count++;
-			if (miss_count >= 100) {
-				// Have to really praise you for this
-				log_write(log, CRITICAL_L, "Have to shut down player %s [%03d]: wont start playing too many times (maybe deadlock)\n", p_name, player->id);
-				exit(-1);
-			}
-		}
-	}
-
 	close(court_fifo);
 	close(my_fifo);
-
 }
 
 
 
 /* Function that makes the process adopt
  * a player's role. Basically, it creates
- * a player, and make them play a match.
- * Every set of the match starts when the
+ * a player, and make them play a court.
+ * Every set of the court starts when the
  * main process sends a "start playing" 
  * message through the fifo, and ends when
  * the player receives a SIG_SET signal 
@@ -302,7 +296,7 @@ void player_main(unsigned int id, log_t* log) {
 	sigaction(SIG_SET, &sa, NULL);
 	int i;
 	for (i = 0; i < NUM_MATCHES; i++) {
-		player_join_match(player, log);
+		player_join_court(player, log);
 		
 		// Wait some tame before joining again
 		// TODO: Change for wait/broadcast or similar

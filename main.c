@@ -15,9 +15,9 @@
 #include "confparser.h"
 #include "log.h"
 #include "player.h"
-#include "match.h"
+#include "court.h"
 #include "namegen.h"
-
+#include "partners_table.h"
 #include "protocol.h"
 
 #define LOG_ROUTE "ElLog.txt"
@@ -27,7 +27,7 @@
  * the fifo of the player can be obtained. After launching the new 
  * player process, this function must call the
  * player_main function to allow it to play 
- * against other in a match. */
+ * against other in a court. */
 int launch_player(unsigned int player_id, log_t* log) {
 
 	// Note: this static variable seems not to work for some reason...
@@ -38,16 +38,12 @@ int launch_player(unsigned int player_id, log_t* log) {
 	log_write(log, INFO_L, "Launching player %03d!\n", player_id);
 
 	// Create the fifo for the player.
-	// Prop: Create a fifo TDA to encapsule things like this create...
-	// It's like the third time I've seen it in the code
-	char* player_fifo_name = malloc(sizeof(char) * MAX_FIFO_NAME_LEN);
+	char player_fifo_name[MAX_FIFO_NAME_LEN];
 	sprintf(player_fifo_name, "fifos/player_%03d.fifo", player_id);
-	if (mknod(player_fifo_name, FIFO_CREAT_FLAGS, 0) < 0) {
+	if(!create_fifo(player_fifo_name)) {
 		log_write(log, ERROR_L, "FIFO creation error for player %03d [errno: %d]\n", player_id, errno);
-		free(player_fifo_name);
 		return -1;
 	}
-	free(player_fifo_name);
 
 	// New process, new player!
 	pid_t pid = fork();
@@ -109,18 +105,19 @@ int main(int argc, char **argv){
 		return 0;
 	}
 
-	// Launch a single match, then end the tournament
-	match_t* match = match_create(log);
-	
-	for (j = 0; j < NUM_MATCHES; j++) {
-		match_lobby(match, log);
-	}
-	
-	for (i = 0; i < PLAYERS_PER_MATCH; i++) {
-		log_write(log, INFO_L, "Player %03d won a total of %d matches\n", i, match->player_points[i]);
-	}
+	// Create table of partners
+	partners_table_t* pt = partners_table_create(PLAYERS_PER_MATCH);
 
-	match_destroy(match);		
+	// Launch a single court, then end the tournament
+	court_t* court = court_create(log, pt);
+	
+	for (j = 0; j < NUM_MATCHES; j++) 
+		court_lobby(court, log);
+	
+	for (i = 0; i < PLAYERS_PER_MATCH; i++) 
+		log_write(log, INFO_L, "Player %03d won a total of %d matches\n", i, court->player_points[i]);
+
+	court_destroy(court);		
 	log_close(log);
 	return 0;
 }

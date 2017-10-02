@@ -1,6 +1,5 @@
-GCC := -std=c99 -g
 VFLAGS := --leak-check=full --show-leak-kinds=all
-ARCHIVOS = log.o player.o namegen.o confparser.o match.o
+ARCHIVOS = log.o player.o namegen.o confparser.o court.o protocol.o partners_table.o
 PROGRAMA = main
 
 all: clean $(PROGRAMA)
@@ -19,7 +18,6 @@ $(PROGRAMA): $(ARCHIVOS) $(PROGRAMA).o
 clean:
 	rm -f $(PROGRAMA) *.o
 	rm -f fifos/*
-	rmdir fifos
 
 valgrind: clean $(PROGRAMA)
 	valgrind $(VFLAGS) ./$(PROGRAMA)

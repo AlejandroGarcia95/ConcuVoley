@@ -3,6 +3,13 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include "log.h"
+#include "protocol.h"
 
 // Temporary
 #define NUM_MATCHES 3
@@ -40,10 +47,22 @@ struct message {
 
 typedef struct message message_t;
 
+/* Stores player's fifo filename from their id on dest_buffer.
+ * Returns true if it was successful, or false otherwise.*/
+bool get_player_fifo_name(unsigned int id, char* dest_buffer);
+
+bool create_fifo(char* fifo_name);
+
+/* Receives a message from fifo_fd and stores it on msg.
+ * On any error, returns false. Notice read is blocking.*/
+bool receive_msg(int fifo_fd, message_t* msg);
+
+/* Sends the message msg through fifo_fd. Returns true if
+ * successful, or false otherwise.*/
+bool send_msg(int fifo_fd, message_t* msg);
+
 // Prop: Create a function "message_create(m_type, m_id, m_score)"
 // for shortening code
 
-// Prop 2: Create primitives like "send msg" or "receive msg" in order
-// to avoid writing reads and writes and error checks all over the code
 
 #endif //PROTOCOL_H
