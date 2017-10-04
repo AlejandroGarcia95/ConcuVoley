@@ -14,13 +14,18 @@
 
 #define SETS_AMOUNT 5
 #define SETS_WINNING 3
-#define SET_DURATION 4
 
 // Deprecated, not in use now
 //#define PIPE_READ 0
 //#define PIPE_WRITE 1
 
 #define SIG_SET SIGUSR1
+
+/* NEW: structure for modelling each team playing on the court. */
+typedef struct court_team_ {
+	unsigned int team_players[PLAYERS_PER_TEAM];
+	size_t team_size;
+} court_team_t;
 
 /* court structure used to model a court of
  * the tournament. It temporally stores the
@@ -33,17 +38,41 @@ typedef struct court_ {
 	int player_fifos[PLAYERS_PER_MATCH];
 	int court_fifo;
 	char* court_fifo_name;
-	bool close_pipes; // close_fifos
+	bool close_pipes; 
+	// Prop: send this scores to the court_team_t structure
 	uint8_t sets_won_home;
 	uint8_t sets_won_away;
 
 	// Temporary!!
+	// TODO: Replace it by the new court_team_t
+	// court_team_t team_home; // team 0
+	// court_team_t team_away; // team 1
 	uint8_t connected_players;
 	partners_table_t* pt;
 	uint8_t player_points[PLAYERS_PER_MATCH];
 	unsigned int player_connected[PLAYERS_PER_MATCH];
 	unsigned int player_team[PLAYERS_PER_MATCH];
 } court_t;
+
+// --------------- Court team section --------------
+
+/* Initializes received team as empty team.*/
+void court_team_initialize(court_team_t* team);
+
+/* Returns true if team is full (no other member can
+ * join it) or false otherwise.*/
+bool court_team_is_full(court_team_t team);
+
+/* Returns true if the received player can join the team.*/
+bool court_team_player_can_join_team(court_team_t team, unsigned int player_id, partners_table_t* pt);
+
+/* Joins the received player to the team.*/
+void court_team_join_player(court_team_t* team, unsigned int player_id);
+
+/* Removes every player of the team from it.*/
+void court_team_kick_players(court_team_t* team);
+
+// --------------- Court section -------------------
 
 /* Dynamically creates a new court. Returns
  * NULL in failure. The pipes argument are

@@ -8,6 +8,7 @@
 #include <sys/ipc.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <errno.h>
 #include <assert.h>
 #include <sys/wait.h>
 #include <time.h>
@@ -107,6 +108,10 @@ int main(int argc, char **argv){
 
 	// Create table of partners
 	partners_table_t* pt = partners_table_create(PLAYERS_PER_MATCH);
+	
+	if(!pt) {
+		log_write(log, ERROR_L, "Error creating partners table [errno: %d]\n", errno);
+	}
 
 	// Launch a single court, then end the tournament
 	court_t* court = court_create(log, pt);
@@ -117,7 +122,10 @@ int main(int argc, char **argv){
 	for (i = 0; i < PLAYERS_PER_MATCH; i++) 
 		log_write(log, INFO_L, "Player %03d won a total of %d matches\n", i, court->player_points[i]);
 
-	court_destroy(court);		
+	// Prop: add a "wait" loop or something so main waits all players
+
+	court_destroy(court);
+	partners_table_free_table(pt);		
 	log_close(log);
 	return 0;
 }

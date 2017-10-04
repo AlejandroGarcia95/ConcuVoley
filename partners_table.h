@@ -8,6 +8,7 @@
 
 typedef struct partners_table_ {
 	size_t players_amount;
+	int shmid;
 	bool* table;
 } partners_table_t;
 
@@ -15,8 +16,16 @@ typedef struct partners_table_ {
  * amount of players received. Returns NULL on error.*/
 partners_table_t* partners_table_create(size_t players);
 
-/* Destroys the allocated partners_table.*/
+/* Destroys the allocated partners_table and detaches share
+ * memory. This function SHOULD NOT be called in main
+ * process (instead use function below).*/
 void partners_table_destroy(partners_table_t* pt);
+
+/* Destroys the partners table and also the shared memory
+ * used inside it. This function is to replace the destroy
+ * function for main process, and only main process should
+ * call it.*/
+void partners_table_free_table(partners_table_t* pt);
 
 /* Checks if the two players received already played together.
  * Returns true if that was the case, or false otherwise. If

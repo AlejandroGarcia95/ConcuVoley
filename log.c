@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <stdarg.h>
 #include <sys/time.h>
+#include "lock.h"
 #include "log.h"
 
 /* Important comment about the log: La consigna dice que debería
@@ -11,6 +12,8 @@
  * el log_open y que en el log_write sólo imprima los mensajes de E,W,I
  * si el flag está en 1
  * */
+
+// TODO: Add a lock to this (just uncomment the locks calls)
 
 /* Auxiliar function that creates a pretty-printeable
  * time string. The final string is stored at str.*/
@@ -45,6 +48,7 @@ log_t* log_open(char* route, bool append, struct timeval time_app_started){
 	log->log_file = pf;
 	
 	log->time_created = time_app_started;
+	// log->lock = lock_create(...);
 	return log;
 }
 
@@ -52,6 +56,7 @@ log_t* log_open(char* route, bool append, struct timeval time_app_started){
 void log_close(log_t* log){
 	if(log && log->log_file)
 		fclose(log->log_file);
+	// lock_destroy(log->lock);	
 	if(log)
 		free(log);
 }
@@ -60,9 +65,9 @@ void log_close(log_t* log){
  * level specified for the writing. If successful, returns
  * the total of characters written. Otherwise, a negative
  * number is returned.*/
- // TODO: Add a lock for writing in the lock
 int log_write(log_t* log, log_level lvl, char* msg, ... ){
 	if(!(log && log->log_file)) return -1;
+	// lock_acquire(log->lock);
 	fflush(log->log_file);
 	
 	char time_str[10];
@@ -101,5 +106,6 @@ int log_write(log_t* log, log_level lvl, char* msg, ... ){
 	vfprintf(log->log_file, msg, args);
 	va_end(args);
 	fflush(log->log_file);
+	// lock_release(log->lock);
 	return 0;
 }

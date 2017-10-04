@@ -14,6 +14,50 @@
 
 #include "protocol.h"
 
+// In microseconds!
+#define SET_MAX_DURATION 4000000 
+#define SET_MIN_DURATION 1000000 
+
+// --------------- Court team section --------------
+
+/* Initializes received team as empty team.*/
+void court_team_initialize(court_team_t* team){
+	team->team_size = 0;
+	int i;
+	for (i = 0; i < PLAYERS_PER_TEAM; i++)
+		team->team_players[i] = 0;
+}
+
+/* Returns true if team is full (no other member can
+ * join it) or false otherwise.*/
+bool court_team_is_full(court_team_t team){
+	return (team.team_size == PLAYERS_PER_TEAM);
+}
+
+/* Returns true if the received player can join the team.*/
+bool court_team_player_can_join_team(court_team_t team, unsigned int player_id, partners_table_t* pt){
+	if(court_team_is_full(team)) return false;
+	// If playerd_id has already played with any team member, returns false
+	int i;
+	for (i = 0; i < team.team_size; i++)
+		if(get_played_together(pt, i, player_id))
+			return false;
+	return true;
+}
+
+/* Joins the received player to the team.*/
+void court_team_join_player(court_team_t* team, unsigned int player_id){
+	team->team_players[team->team_size] = player_id;
+	team->team_size++;
+}
+
+/* Removes every player of the team from it.*/
+void court_team_kick_players(court_team_t* team){
+	court_team_initialize(team);
+}
+
+// --------------- Auxiliar functions ---------------
+
 void connect_player_in_team(court_t* court, log_t* log, unsigned int p_id, unsigned int team){
 	court->player_connected[court->connected_players] = p_id;
 	court->player_team[p_id] = team;
@@ -21,14 +65,28 @@ void connect_player_in_team(court_t* court, log_t* log, unsigned int p_id, unsig
 	court->connected_players++;
 }
 
+/* Marks each player's partner on the partners_table
+ * stored at court.*/
+// TODO: Rewrite this using the court_team_t
+void mark_players_partners(court_t* court){
+	if((!court) || (!court->pt)) return;
+	// Mark each players' partner
+	int i, j;
+	for(i = 0; i < PLAYERS_PER_MATCH; i++)
+		for(j = i + 1; j < PLAYERS_PER_MATCH; j++) {
+			unsigned int p1 = court->player_connected[i];
+			unsigned int p2 = court->player_connected[j];
+			if(court->player_team[p1] == court->player_team[p2])
+				set_played_together(court->pt, p1, p2);
+			}
+}
+
 /* Auxiliar function that receives a MSG_PLAYER_JOIN_REQ message
  * for court and determinates if that player can join or not. If
  * the player can join the match, this functions accepts them and
  * assign them a team. If the player can't, this function should
  * kick them off!*/
- // TODO: Find out a more beautiful way of thinking this
- // Prop: Store in court_t two arrays of 2 elements... each one
- // is to store the players' ids of each team
+ // TODO: Rewrite this using the court_team_t
 void handle_player_team(court_t* court, log_t* log, message_t msg){
 	static int team_members[2] = {0};
 	int p_act;
@@ -86,10 +144,9 @@ void handle_player_team(court_t* court, log_t* log, message_t msg){
 
 }
 
-// ---------------------------------------------------------------------
 
-/* Opens this court's fifo. If fifo was already
- * opened, silently does nothing.
+/* Auxiliar function that opens this court's fifo. If fifo was 
+ * already opened, silently does nothing.
  * Watch out! open is blocking!*/
 void open_court_fifo(court_t* court, log_t* log){
 	if (court->court_fifo < 0) {
@@ -113,8 +170,6 @@ court_t* court_create(log_t* log,  partners_table_t* pt) {
 
 	court_t* court = malloc(sizeof(court_t));
 	if (!court) return NULL;
-	
-	//memcpy(&court->close_pipes, &close_pipes, sizeof(int) * 2 * PLAYERS_PER_MATCH);
 	
 	// Creating fifo for court
 	// Ideally move this to main as the courts are build
@@ -154,6 +209,7 @@ void court_destroy(court_t* court){
  * and calls to court_play.
  * Once court ends, it comes here again.. eager to start another court.
  */
+ // TODO: Refactor using new court_team_t
 void court_lobby(court_t* court, log_t* log) {
 
 	log_write(log, INFO_L, "A new match is about to begin... lobby\n", errno);
@@ -231,7 +287,8 @@ void court_play(court_t* court, log_t* log){
 		// Let the set last 6 seconds for now. After that, the
 		// main process will make all players stop
 		// TODO: Change this for something random!
-		sleep(SET_DURATION);
+		unsigned long int t_rand = rand() % (SET_MAX_DURATION - SET_MIN_DURATION);
+		usleep(t_rand + SET_MIN_DURATION);
 		court_finish_set(court);
 		
 		// Wait for the four player's scores
@@ -248,7 +305,8 @@ void court_play(court_t* court, log_t* log){
 			log_write(log, NONE_L, "Player %03d set score: %ld\n", i, players_scores[i]);
 		
 		// Determinate the winner of the set
-		// I know this is my own code, but it's ugly. Prop: Send it to another function
+		// I know this is my own code, but it's ugly.
+		// Prop: Rewrite this using court_team_t with scores
 		unsigned long int score_home = 0, score_away = 0;
 		for (i = 0; i < PLAYERS_PER_MATCH; i++) {
 			if (court->player_team[i] == 0)
@@ -276,8 +334,7 @@ void court_play(court_t* court, log_t* log){
 	}
 
 	// Close pipes and show final results
-	// TODO: watch out for this homebrew method for mantain global score, it's rubbish!
-	// More that courtes won, we should store players' points
+	// TODO: Refactor with new court_team_t
 /*	if(court->sets_won_home > court->sets_won_away) {
 		log_write(log, NONE_L, "Team 1 won!\n");
 		for (i = 0; i < PLAYERS_PER_MATCH; i++)
@@ -296,15 +353,7 @@ void court_play(court_t* court, log_t* log){
 		if (court->player_team[i] == won_team)
 			court->player_points[i]++;
 			
-	// Mark each players' partner
-	// Diu
-	for(i = 0; i < PLAYERS_PER_MATCH; i++)
-		for(j = i + 1; j < PLAYERS_PER_MATCH; j++) {
-			unsigned int p1 = court->player_connected[i];
-			unsigned int p2 = court->player_connected[j];
-			if(court->player_team[p1] == court->player_team[p2])
-				set_played_together(court->pt, p1, p2);
-			}
+	mark_players_partners(court);
 }
 
 /* Finish the current set by signaling
