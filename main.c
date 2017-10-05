@@ -21,10 +21,12 @@
 #include "partners_table.h"
 #include "protocol.h"
 
+// Semaphores
+#include <sys/sem.h>
+	
 #define LOG_ROUTE "ElLog.txt"
 
 
-#define TOTAL_PLAYERS 4
 
 /* Launches a new process which will assume a
  * player's role. Each player is given an id, from which
@@ -82,16 +84,31 @@ int main(int argc, char **argv){
 	}
 	log_write(log, NONE_L, "Let the tournament begin!\n");
 
+
 	// Create table of partners
 	partners_table_t* pt = partners_table_create(TOTAL_PLAYERS);
-	
 	if(!pt) {
 		log_write(log, ERROR_L, "Error creating partners table [errno: %d]\n", errno);
 	}
 
 	// Launch a single court, then end the tournament
 	court_t* court = court_create(log, pt);
-	
+ 
+
+	// Creo un set de CUATRO semáforos (just for show!)
+	// Como es un semaphore set.. se pueden crear de un saque todos lo semáforos!
+	key_t key = ftok("fifos/court.fifo", 6);
+	int sem = semget(key, 1, IPC_CREAT | 0666);
+	if (sem < 0)
+		log_write(log, ERROR_L, "Error creating semaphore [errno: %d]\n", errno);
+
+	// A cada semáforo le asigno un valor de 4
+	int i;
+	for (i = 0; i < 1; i++) {
+		if (semctl(sem, i, SETVAL, 4) < 0)
+			log_write(log, ERROR_L, "Error SETVAL the semaphore [errno: %d]\n", errno);
+	}
+
 	// "Remember who you are and where you come from; 
 	// otherwise, you don't know where you are going."
 	pid_t main_pid = getpid();
@@ -101,7 +118,7 @@ int main(int argc, char **argv){
 	// We want main process to ignore SIG_SET signal as
 	// it's just for players processes
 	signal(SIG_SET, SIG_IGN);
-	int i, j;
+	int j;
 	// Launch players processes
 	for(i = 0; i < TOTAL_PLAYERS; i++){
 		if (getpid() == main_pid)
@@ -127,6 +144,12 @@ int main(int argc, char **argv){
 
 	// Prop: add a "wait" loop or something so main waits all players
 
+	for (i = 0; i < TOTAL_PLAYERS; i++) {
+		int status;
+		int pid = wait(&status);
+		int ret = WEXITSTATUS(status);
+		log_write(log, INFO_L, "Proccess pid %d finished with exit status %d\n", pid, ret);
+	}
 	court_destroy(court);
 	partners_table_free_table(pt);		
 	log_close(log);

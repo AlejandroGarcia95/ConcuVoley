@@ -12,7 +12,8 @@
 #include "protocol.h"
 
 // Temporary
-#define NUM_MATCHES 4
+#define TOTAL_PLAYERS 6
+#define NUM_MATCHES 2
 
 
 #define MAX_FIFO_NAME_LEN 50

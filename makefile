@@ -1,3 +1,4 @@
+CFLAGS := -g
 VFLAGS := --leak-check=full --show-leak-kinds=all
 ARCHIVOS = log.o player.o namegen.o confparser.o court.o protocol.o partners_table.o lock.o
 PROGRAMA = main

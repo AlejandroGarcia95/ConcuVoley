@@ -8,6 +8,7 @@
 #include <signal.h>
 #include "log.h"
 #include "partners_table.h"
+#include "protocol.h"
 
 #define PLAYERS_PER_MATCH 4
 #define PLAYERS_PER_TEAM (PLAYERS_PER_MATCH / 2)
@@ -18,6 +19,11 @@
 // Deprecated, not in use now
 //#define PIPE_READ 0
 //#define PIPE_WRITE 1
+
+
+#define MATCH_TO_PLAYER(mid) (court->player_connected[mid])
+#define PLAYER_TO_MATCH(pid) (court->player_number[pid])
+
 
 #define SIG_SET SIGUSR1
 
@@ -49,7 +55,9 @@ typedef struct court_ {
 	// court_team_t team_away; // team 1
 	uint8_t connected_players;
 	partners_table_t* pt;
-	uint8_t player_points[PLAYERS_PER_MATCH];
+
+	uint8_t player_points[TOTAL_PLAYERS];
+	uint8_t player_number[TOTAL_PLAYERS];
 	unsigned int player_connected[PLAYERS_PER_MATCH];
 	unsigned int player_team[PLAYERS_PER_MATCH];
 } court_t;

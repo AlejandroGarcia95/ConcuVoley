@@ -61,8 +61,10 @@ void court_team_kick_players(court_team_t* team){
 // --------------- Auxiliar functions ---------------
 
 void connect_player_in_team(court_t* court, log_t* log, unsigned int p_id, unsigned int team){
-	court->player_connected[court->connected_players] = p_id;
-	court->player_team[p_id] = team;
+	unsigned int match_id = court->connected_players;
+	court->player_connected[match_id] = p_id;
+	court->player_team[match_id] = team;
+	court->player_number[p_id] = match_id;
 	log_write(log, INFO_L, "Player %03d is connected at court 000 for team %d\n", p_id, team + 1);
 	court->connected_players++;
 }
@@ -76,9 +78,9 @@ void mark_players_partners(court_t* court){
 	int i, j;
 	for(i = 0; i < PLAYERS_PER_MATCH; i++)
 		for(j = i + 1; j < PLAYERS_PER_MATCH; j++) {
-			unsigned int p1 = court->player_connected[i];
-			unsigned int p2 = court->player_connected[j];
-			if(court->player_team[p1] == court->player_team[p2])
+			unsigned int p1 = MATCH_TO_PLAYER(i);
+			unsigned int p2 = MATCH_TO_PLAYER(j);
+			if(court->player_team[i] == court->player_team[j])
 				set_played_together(court->pt, p1, p2);
 			}
 }
@@ -113,8 +115,8 @@ void handle_player_team(court_t* court, log_t* log, message_t msg){
 
 			joined = false; // Debug only
 			for(p_act = 0; p_act < court->connected_players; p_act++){
-				unsigned int p_act_id = court->player_connected[p_act];
-				unsigned int p_act_team = court->player_team[p_act_id];
+				unsigned int p_act_id = MATCH_TO_PLAYER(p_act);
+				unsigned int p_act_team = court->player_team[p_act];
 
 				if(!get_played_together(court->pt, msg.m_player_id, p_act_id)){
 					if(team_members[p_act_team] < 2) {
@@ -149,7 +151,7 @@ void handle_player_team(court_t* court, log_t* log, message_t msg){
 	if(court->connected_players == PLAYERS_PER_MATCH) {
 		team_members[0] = 0;
 		team_members[1] = 0;
-		}
+	}
 
 }
 
@@ -194,6 +196,9 @@ court_t* court_create(log_t* log,  partners_table_t* pt) {
 	int i;
 	for (i = 0; i < PLAYERS_PER_MATCH; i++) {
 		court->player_fifos[i] = -1;
+	}
+
+	for (i = 0; i < TOTAL_PLAYERS; i++) {
 		court->player_points[i] = 0;
 	}
 
@@ -306,13 +311,14 @@ void court_play(court_t* court, log_t* log){
 			if(!receive_msg(court->court_fifo, &msg))
 				log_write(log, ERROR_L, "Error reading score from player %03d at court 000 [errno: %d]\n", i, errno);
 			else {
+				log_write(log, INFO_L, "Received %d from player %03d at court 000\n", msg.m_type, msg.m_player_id);
 				assert(msg.m_type == MSG_PLAYER_SCORE);
-				players_scores[msg.m_player_id] = msg.m_score;
+				players_scores[PLAYER_TO_MATCH(msg.m_player_id)] = msg.m_score;
 			}
 		}
 		// Show this set score
 		for(i = 0; i < PLAYERS_PER_MATCH; i++)
-			log_write(log, NONE_L, "Player %03d set score: %ld\n", i, players_scores[i]);
+			log_write(log, NONE_L, "Player %03d set score: %ld\n", MATCH_TO_PLAYER(i), players_scores[i]);
 		
 		// Determinate the winner of the set
 		// I know this is my own code, but it's ugly.
@@ -361,7 +367,7 @@ void court_play(court_t* court, log_t* log){
 	log_write(log, NONE_L, "Team %d won!\n", won_team + 1);
 	for (i = 0; i < PLAYERS_PER_MATCH; i++)
 		if (court->player_team[i] == won_team)
-			court->player_points[i]++;
+			court->player_points[MATCH_TO_PLAYER(i)]++;
 			
 	mark_players_partners(court);
 }

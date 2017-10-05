@@ -11,6 +11,7 @@
 #include "court.h"
 
 #include "protocol.h"
+#include <sys/sem.h>
 
 // In microseconds!
 #define MIN_SCORE_TIME 15000
@@ -255,11 +256,34 @@ void player_join_court(player_t* player, log_t* log) {
 	// "set start" message. Delegate behaviour on player_at_court
 	player_at_court(player, log, court_fifo, my_fifo);
 	
-	close(court_fifo);
-	close(my_fifo);
+	player_unset_sigset_handler();
+	if (close(court_fifo) < 0)
+		log_write(log, ERROR_L, "Player %03d close court_fifo error [errno: %d]\n", player->id, errno);
+
+	if (close(my_fifo) < 0);
+		log_write(log, ERROR_L, "Player %03d close self_fifo error [errno: %d]\n", player->id, errno);
 }
 
 
+
+void player_set_sigset_handler() {
+	// Set the hanlder for the SIG_SET signal
+	struct sigaction sa;
+	sigset_t sigset;	
+	sigemptyset(&sa.sa_mask);
+	sa.sa_flags = 0;
+	sa.sa_handler = handler_players_set;
+	sigaction(SIG_SET, &sa, NULL);
+}
+
+void player_unset_sigset_handler() {
+	struct sigaction sa;
+	sigset_t sigset;	
+	sigemptyset(&sa.sa_mask);
+	sa.sa_flags = 0;
+	sa.sa_handler = NULL;
+	sigaction(SIG_SET, &sa, NULL);
+}
 
 /* Function that makes the process adopt
  * a player's role. Basically, it creates
@@ -287,16 +311,30 @@ void player_main(unsigned int id, log_t* log) {
 	log_write(log, INFO_L, "Created new player [%03d]: %s\n", player->id, p_name);
 	log_write(log, INFO_L, "%s skill is: %d\n", p_name, player_get_skill());
 	
-	// Set the hanlder for the SIG_SET signal
-	struct sigaction sa;
-	sigset_t sigset;	
-	sigemptyset(&sa.sa_mask);
-	sa.sa_flags = 0;
-	sa.sa_handler = handler_players_set;
-	sigaction(SIG_SET, &sa, NULL);
-	int i;
+
+	// Get the court key!!
+	// TODO: change it so it grabs the key to the court it wanna join
+	key_t key = ftok("fifos/court.fifo", 6);
+	int sem = semget(key, 1, 0666);
+	if (sem < 0)
+		log_write(log, ERROR_L, "Error opening the semaphore at player %03d [errno: %d]\n", player->id, errno);
+
+	struct sembuf s = {};
+	int i, r;
 	for (i = 0; i < NUM_MATCHES; i++) {
+		s.sem_op = -1;
+		if (semop(sem, &s, 1) < 0)
+			log_write(log, ERROR_L, "Player %03d error taken semaphore [errno: %d]\n", player->id, errno);
+
+		player_set_sigset_handler();
+		log_write(log, INFO_L, "Player %03d took semaphore\n", player->id);
 		player_join_court(player, log);
+
+
+		s.sem_op = 1;
+		if (semop(sem, &s, 1) < 0)
+			log_write(log, ERROR_L, "Player %03d error taken semaphore [errno: %d]\n", player->id, errno);
+		log_write(log, INFO_L, "Player %03d released semaphore\n", player->id);
 		
 		// Wait some tame before joining again
 		// TODO: Change for wait/broadcast or similar
@@ -307,7 +345,7 @@ void player_main(unsigned int id, log_t* log) {
 	player_destroy(player);
 
 	log_close(log);
-	exit(-1);
+	exit(0);
 	// Beware! Returns to main!
 }
 
