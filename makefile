@@ -4,19 +4,20 @@ PROGRAMA = main
 
 all: clean $(PROGRAMA)
 
-run: $(PROGRAMA)
-	./$(PROGRAMA)
-
 $(PROGRAMA): $(ARCHIVOS) $(PROGRAMA).o
 	@mkdir -p fifos
 	@rm -f fifos/*
 	gcc -o $(PROGRAMA) $^
+
+run: clean $(PROGRAMA)
+	./$(PROGRAMA)
 
 %.o: %.c
 	gcc $(CFLAGS) -c $< -o $@ 
 
 clean:
 	rm -f $(PROGRAMA) *.o
+	touch ElLog.txt
 	rm ElLog.txt
 	rm -f fifos/*
 

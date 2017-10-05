@@ -12,7 +12,7 @@
 #include "protocol.h"
 
 // Temporary
-#define NUM_MATCHES 3
+#define NUM_MATCHES 4
 
 
 #define MAX_FIFO_NAME_LEN 50

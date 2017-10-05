@@ -23,6 +23,9 @@
 
 #define LOG_ROUTE "ElLog.txt"
 
+
+#define TOTAL_PLAYERS 4
+
 /* Launches a new process which will assume a
  * player's role. Each player is given an id, from which
  * the fifo of the player can be obtained. After launching the new 
@@ -79,6 +82,16 @@ int main(int argc, char **argv){
 	}
 	log_write(log, NONE_L, "Let the tournament begin!\n");
 
+	// Create table of partners
+	partners_table_t* pt = partners_table_create(TOTAL_PLAYERS);
+	
+	if(!pt) {
+		log_write(log, ERROR_L, "Error creating partners table [errno: %d]\n", errno);
+	}
+
+	// Launch a single court, then end the tournament
+	court_t* court = court_create(log, pt);
+	
 	// "Remember who you are and where you come from; 
 	// otherwise, you don't know where you are going."
 	pid_t main_pid = getpid();
@@ -90,7 +103,7 @@ int main(int argc, char **argv){
 	signal(SIG_SET, SIG_IGN);
 	int i, j;
 	// Launch players processes
-	for(i = 0; i < PLAYERS_PER_MATCH; i++){
+	for(i = 0; i < TOTAL_PLAYERS; i++){
 		if (getpid() == main_pid)
 			launch_player(i, log);
 	}
@@ -106,20 +119,10 @@ int main(int argc, char **argv){
 		return 0;
 	}
 
-	// Create table of partners
-	partners_table_t* pt = partners_table_create(PLAYERS_PER_MATCH);
-	
-	if(!pt) {
-		log_write(log, ERROR_L, "Error creating partners table [errno: %d]\n", errno);
-	}
-
-	// Launch a single court, then end the tournament
-	court_t* court = court_create(log, pt);
-	
 	for (j = 0; j < NUM_MATCHES; j++) 
 		court_lobby(court, log);
 	
-	for (i = 0; i < PLAYERS_PER_MATCH; i++) 
+	for (i = 0; i < TOTAL_PLAYERS; i++) 
 		log_write(log, INFO_L, "Player %03d won a total of %d matches\n", i, court->player_points[i]);
 
 	// Prop: add a "wait" loop or something so main waits all players

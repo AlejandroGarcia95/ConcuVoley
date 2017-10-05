@@ -18,6 +18,8 @@
 #define SET_MAX_DURATION 4000000 
 #define SET_MIN_DURATION 1000000 
 
+#define OTHER_TEAM(x) ((x + 1) % 2)
+
 // --------------- Court team section --------------
 
 /* Initializes received team as empty team.*/
@@ -90,6 +92,7 @@ void mark_players_partners(court_t* court){
 void handle_player_team(court_t* court, log_t* log, message_t msg){
 	static int team_members[2] = {0};
 	int p_act;
+	bool joined;
 	switch(court->connected_players){
 		case 0: // First player to connect. Instantly accepted
 			connect_player_in_team(court, log, msg.m_player_id, 0);
@@ -100,39 +103,45 @@ void handle_player_team(court_t* court, log_t* log, message_t msg){
 			if(!get_played_together(court->pt, court->player_connected[0], msg.m_player_id)){
 				connect_player_in_team(court, log, msg.m_player_id, 0);
 				team_members[0]++;
-			}
-			else { // If not, go to other team
+			} else { // If not, go to other team
 				connect_player_in_team(court, log, msg.m_player_id, 1);
 				team_members[1]++;
-				}
+			}
 			break;
 		case 2: 
 		case 3: // TODO: Find out another way of doing this, considering kicking off the player
+
+			joined = false; // Debug only
 			for(p_act = 0; p_act < court->connected_players; p_act++){
 				unsigned int p_act_id = court->player_connected[p_act];
 				unsigned int p_act_team = court->player_team[p_act_id];
+
 				if(!get_played_together(court->pt, msg.m_player_id, p_act_id)){
 					if(team_members[p_act_team] < 2) {
 						connect_player_in_team(court, log, msg.m_player_id, p_act_team);
 						team_members[p_act_team]++;
+						joined = true;
 						break;
 					}
-					else if(team_members[!p_act_team] < 2) {
-						connect_player_in_team(court, log, msg.m_player_id, !p_act_team);
-						team_members[!p_act_team]++;
+					else if(team_members[OTHER_TEAM(p_act_team)] < 2) {
+						connect_player_in_team(court, log, msg.m_player_id, OTHER_TEAM(p_act_team));
+						team_members[OTHER_TEAM(p_act_team)]++;
+						joined = true;
 						break;
 					}
 					else {
 						// Should not happen
+						log_write(log, CRITICAL_L, "Oops!! Player %03d tried to join a full match.!\n", msg.m_player_id);
 						return;
-						}
+					}
 				}
-					
 			}
-				
+			if (!joined)
+				log_write(log, CRITICAL_L, "Player %03d couldn't find a team, we should kick him!!\n", msg.m_player_id);
 			break;
 			
 		default:
+			log_write(log, CRITICAL_L, "Wrong value for court->connected_players: %d\n", court->connected_players);
 			break; // Should not happen
 	}
 	
@@ -242,6 +251,7 @@ void court_lobby(court_t* court, log_t* log) {
 				if (court->player_fifos[court->connected_players] < 0) {
 					log_write(log, ERROR_L, "FIFO opening error for player %d fifo at court 000 [errno: %d]\n", msg.m_player_id, errno);
 				} else {
+					log_write(log, INFO_L, "Court will handle player %d\n", msg.m_player_id);
 					handle_player_team(court, log, msg);
 				}
 			}

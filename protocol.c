@@ -24,6 +24,7 @@ bool create_fifo(char* fifo_name){
 
 /* Receives a message from fifo_fd and stores it on msg.
  * On any error, returns false. Notice read is blocking.*/
+// TODO: reemplazar con un while para evitar lecturas parciales?
 bool receive_msg(int fifo_fd, message_t* msg){
 	if (read(fifo_fd, msg, sizeof(message_t)) < sizeof(message_t))
 		return false;
