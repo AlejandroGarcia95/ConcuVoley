@@ -66,7 +66,27 @@ void connect_player_in_team(court_t* court, log_t* log, unsigned int p_id, unsig
 	court->player_team[match_id] = team;
 	court->player_number[p_id] = match_id;
 	log_write(log, INFO_L, "Player %03d is connected at court 000 for team %d\n", p_id, team + 1);
+
+	message_t msg = {};
+	msg.m_player_id = p_id;
+	msg.m_type = MSG_MATCH_ACCEPT;
+	if (!send_msg(court->player_fifos[match_id], &msg)) {
+		log_write(log, ERROR_L, "Court failed to send accept msg to player %03d [errno: %d]\n", p_id, errno);
+		exit(-1);	// TODO: don't bail, just revert changes
+	}
+
 	court->connected_players++;
+}
+
+void reject_player(court_t* court, log_t* log, unsigned int p_id) {
+	message_t msg = {};
+	msg.m_player_id = p_id;
+	msg.m_type = MSG_MATCH_REJECT;
+	if (!send_msg(court->player_fifos[court->connected_players], &msg)) {
+		log_write(log, ERROR_L, "Court failed to send accept msg to player %03d [errno: %d]\n", p_id, errno);
+		exit(-1);	// TODO: don't bail, just revert changes
+	}
+
 }
 
 /* Marks each player's partner on the partners_table
@@ -138,8 +158,11 @@ void handle_player_team(court_t* court, log_t* log, message_t msg){
 					}
 				}
 			}
-			if (!joined)
+			if (!joined) {
 				log_write(log, CRITICAL_L, "Player %03d couldn't find a team, we should kick him!!\n", msg.m_player_id);
+				reject_player(court, log, msg.m_player_id);
+				close(court->player_fifos[court->connected_players]);
+			}
 			break;
 			
 		default:

@@ -261,8 +261,7 @@ void player_join_court(player_t* player, log_t* log) {
 		exit(-1);
 	}
 
-	// If accepted (to be implemented) join court
-	// Open self fifo
+	// Open self fifo (to rcv joined msg)
 	char my_fifo_name[MAX_FIFO_NAME_LEN];
 	if(!get_player_fifo_name(player->id, my_fifo_name)) {
 		log_write(log, ERROR_L, "FIFO opening error for player %03d at player %03d [errno: %d]\n", player->id, player->id, errno);
@@ -275,11 +274,20 @@ void player_join_court(player_t* player, log_t* log) {
 	}
 	log_write(log, INFO_L, "Player %03d opened self FIFO\n", player->id);
 
-	// Here the player has joinned a court and is waiting for 
-	// "set start" message. Delegate behaviour on player_at_court
-	player_at_court(player, log, court_fifo, my_fifo);
-	
+	// If accepted join court
+	if(!receive_msg(my_fifo, &msg)) {
+		log_write(log, ERROR_L, "Player %03d error reading accepted/rejected msg [errno: %d]\n", player->id, errno);
+		exit(-1);
+	}
+	// Received a msg!!
+	assert((msg.m_type == MSG_MATCH_ACCEPT) || (msg.m_type == MSG_MATCH_REJECT));
+	if (msg.m_type == MSG_MATCH_ACCEPT) {
+		player_at_court(player, log, court_fifo, my_fifo);
+	} else {
+		log_write(log, ERROR_L, "Player %03d was rejected\n", player->id);
+	}
 	player_unset_sigset_handler();
+
 	if (close(court_fifo) < 0)
 		log_write(log, ERROR_L, "Player %03d close court_fifo error [errno: %d]\n", player->id, errno);
 
@@ -327,12 +335,12 @@ void player_main(unsigned int id, log_t* log) {
 
 	struct sembuf s = {};
 	int i, r;
-	for (i = 0; i < NUM_MATCHES; i++) {
+	for (i = 0; i < 2; i++) {
 		s.sem_op = -1;
 		if (semop(sem, &s, 1) < 0)
 			log_write(log, ERROR_L, "Player %03d error taken semaphore [errno: %d]\n", player->id, errno);
 
-		player_set_sigset_handler();
+		player_s2t_sigset_handler();
 		log_write(log, INFO_L, "Player %03d took semaphore\n", player->id);
 		player_join_court(player, log);
 
@@ -348,6 +356,7 @@ void player_main(unsigned int id, log_t* log) {
 		usleep(t_rand);
 	}
 
+	log_write(log, INFO_L, "Player %03d is leaving\n", player->id);
 	player_destroy(player);
 
 	usleep(rand() % 20000);

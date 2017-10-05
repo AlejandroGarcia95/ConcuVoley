@@ -12,7 +12,7 @@
 #include "protocol.h"
 
 // Temporary
-#define TOTAL_PLAYERS 6
+#define TOTAL_PLAYERS 8
 #define NUM_MATCHES 2
 
 
@@ -36,6 +36,8 @@ typedef enum _msg_type {
 	MSG_PLAYER_JOIN_REQ = 0,
 	MSG_PLAYER_SCORE,
 	MSG_SET_START,
+	MSG_MATCH_ACCEPT,
+	MSG_MATCH_REJECT,
 	MSG_MATCH_END
 } msg_type;
 
