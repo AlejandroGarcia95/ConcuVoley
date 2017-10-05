@@ -35,12 +35,7 @@
  * player_main function to allow it to play 
  * against other in a court. */
 int launch_player(unsigned int player_id, log_t* log) {
-
-	// Note: this static variable seems not to work for some reason...
-	// Really? I was sure I could test it working
-	// properly before... although it ain't that dramatic
-	// static int player_id = 0;
-
+	
 	log_write(log, INFO_L, "Launching player %03d!\n", player_id);
 
 	// Create the fifo for the player.
@@ -77,11 +72,16 @@ int main(int argc, char **argv){
 	gettimeofday (&time_start, NULL);
 	srand(time(NULL));
 	
+	// "Remember who you are and where you come from; 
+	// otherwise, you don't know where you are going."
+	pid_t main_pid = getpid();
+	
 	log_t* log = log_open(LOG_ROUTE, false, time_start);
 	if(!log){
 		printf("FATAL: No log could be opened!\n");
 		return -1;
 	}
+	log_write(log, INFO_L, "Main process (pid: %d) succesfully created log \n", main_pid);
 	log_write(log, NONE_L, "Let the tournament begin!\n");
 
 
@@ -109,10 +109,6 @@ int main(int argc, char **argv){
 			log_write(log, ERROR_L, "Error SETVAL the semaphore [errno: %d]\n", errno);
 	}
 
-	// "Remember who you are and where you come from; 
-	// otherwise, you don't know where you are going."
-	pid_t main_pid = getpid();
-
 	// Let's launch player processes and make them play, yay!
 	
 	// We want main process to ignore SIG_SET signal as
@@ -129,10 +125,10 @@ int main(int argc, char **argv){
 	// once they're done playing the matches.
 	// Then, if we're a player, we should die here
 	if(getpid() != main_pid){
+		log_write(log, INFO_L, "Proccess pid %d about to finish correctly \n", getpid());
+		court_destroy(court);
+		partners_table_destroy(pt);	
 		log_close(log);
-		// IMPORTANT NOTE: the use of 'return 0' is only for
-		// properly testing the children with valgrind. Should
-		// be changed by an exit() later.
 		return 0;
 	}
 
@@ -142,7 +138,6 @@ int main(int argc, char **argv){
 	for (i = 0; i < TOTAL_PLAYERS; i++) 
 		log_write(log, INFO_L, "Player %03d won a total of %d matches\n", i, court->player_points[i]);
 
-	// Prop: add a "wait" loop or something so main waits all players
 
 	for (i = 0; i < TOTAL_PLAYERS; i++) {
 		int status;

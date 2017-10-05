@@ -22,6 +22,7 @@
  */
 
 /* Lock structure to implement our own beautiful lock.*/
+// TODO: Actually implement the beautiful lock
 typedef struct lock_ {
 	struct flock fl;
 	int fd;

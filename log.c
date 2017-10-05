@@ -48,7 +48,14 @@ log_t* log_open(char* route, bool append, struct timeval time_app_started){
 	log->log_file = pf;
 	
 	log->time_created = time_app_started;
-	// log->lock = lock_create(...);
+	
+	log->lock = lock_create("log");
+	if(!log->lock) {
+		fclose(pf);
+		free(log);
+		return NULL;
+	}
+	
 	return log;
 }
 
@@ -56,6 +63,8 @@ log_t* log_open(char* route, bool append, struct timeval time_app_started){
 void log_close(log_t* log){
 	if(log && log->log_file)
 		fclose(log->log_file);
+		
+	lock_destroy(log->lock);
 	// lock_destroy(log->lock);	
 	if(log)
 		free(log);
@@ -67,7 +76,7 @@ void log_close(log_t* log){
  * number is returned.*/
 int log_write(log_t* log, log_level lvl, char* msg, ... ){
 	if(!(log && log->log_file)) return -1;
-	// lock_acquire(log->lock);
+	lock_acquire(log->lock);
 	fflush(log->log_file);
 	
 	char time_str[10];
@@ -81,6 +90,7 @@ int log_write(log_t* log, log_level lvl, char* msg, ... ){
 		vfprintf(log->log_file, msg, args);
 		va_end(args);
 		fflush(log->log_file);
+		lock_release(log->lock);
 		return 0;
 	}
 		
@@ -106,6 +116,6 @@ int log_write(log_t* log, log_level lvl, char* msg, ... ){
 	vfprintf(log->log_file, msg, args);
 	va_end(args);
 	fflush(log->log_file);
-	// lock_release(log->lock);
+	lock_release(log->lock);
 	return 0;
 }

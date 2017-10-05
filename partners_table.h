@@ -4,12 +4,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
-
+#include "lock.h"
 
 typedef struct partners_table_ {
 	size_t players_amount;
 	int shmid;
 	bool* table;
+	lock_t* lock;
 } partners_table_t;
 
 /* Dinamically allocates a new partners_table based on the 

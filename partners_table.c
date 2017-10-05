@@ -24,22 +24,28 @@ partners_table_t* partners_table_create(size_t players){
 	
 	pt->players_amount = players;
 	
+	pt->lock = lock_create("partners_table");
+	if(!pt->lock){
+		free(pt);
+		return NULL;
+	}
+	
 	// Create table as shared memory
 	pt->shmid = shmget(key, sizeof(bool) * players * players, IPC_CREAT | 0644);
 	if(pt->shmid < 0){
+		lock_destroy(pt->lock);
 		free(pt);
 		return NULL;
 		}
 	
 	void* shm = shmat(pt->shmid, NULL, 0);
 	if(shm == (void*) -1) {
+		lock_destroy(pt->lock);
 		free(pt);
 		return NULL;
 		}
 	
 	pt->table = (bool*) shm;
-	
-	// pt->lock = lock_create(...);
 	
 	// Initialize table
 	int i, j;
@@ -54,7 +60,8 @@ partners_table_t* partners_table_create(size_t players){
  * memory. This function SHOULD NOT be called in main
  * process (instead use function below).*/
 void partners_table_destroy(partners_table_t* pt){
-	// lock_destroy(pt->lock);
+	if(!pt) return;
+	lock_destroy(pt->lock);
 	// Detaches shared memory 
 	shmdt((void*) pt->table);
 	free(pt);
@@ -65,6 +72,8 @@ void partners_table_destroy(partners_table_t* pt){
  * function for main process, and only main process should
  * call it.*/
 void partners_table_free_table(partners_table_t* pt){
+	if(!pt) return;
+	lock_destroy(pt->lock);
 	int idshm = pt->shmid;
 	partners_table_destroy(pt);
 	// Au revoir shared memory:
@@ -84,9 +93,9 @@ bool get_played_together(partners_table_t* pt, size_t p1_id, size_t p2_id){
 	if((p1_id >= pt->players_amount) || (p2_id >= pt->players_amount))
 		return false;
 
-	//lock_acquire(log->lock);
+	lock_acquire(pt->lock);
 	bool res = pt->table[p1_id * pt->players_amount + p2_id];
-	// lock_release(log->lock);
+	lock_release(pt->lock);
 	return res;
 }
 
@@ -103,8 +112,8 @@ void set_played_together(partners_table_t* pt, size_t p1_id, size_t p2_id){
 	if((p1_id >= pt->players_amount) || (p2_id >= pt->players_amount))
 		return;
 
-	//lock_acquire(log->lock);
+	lock_acquire(pt->lock);
 	pt->table[p1_id * pt->players_amount + p2_id] = true;
 	pt->table[p2_id * pt->players_amount + p1_id] = true;
-	// lock_release(log->lock);
+	lock_release(pt->lock);
 }

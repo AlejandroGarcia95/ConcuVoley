@@ -142,6 +142,38 @@ void player_start_playing(){
 		player->currently_playing = true;
 }
 
+/* Handler function for a player process.
+ * It should only be used with SIG_SET
+ * signal. Makes the player stop playing 
+ * the set if they were playing.*/
+void handler_players_set(int signum) {
+	assert(signum == SIG_SET);
+	// Check if set is to start or finish
+	if(player_is_playing()) 
+		player_stop_playing();
+}
+
+void player_set_sigset_handler() {
+	// Set the hanlder for the SIG_SET signal
+	struct sigaction sa;
+	sigset_t sigset;	
+	sigemptyset(&sa.sa_mask);
+	sa.sa_flags = 0;
+	sa.sa_handler = handler_players_set;
+	sigaction(SIG_SET, &sa, NULL);
+}
+
+void player_unset_sigset_handler() {
+	signal(SIG_SET, SIG_IGN);
+	return;
+/*	struct sigaction sa;
+	sigset_t sigset;	
+	sigemptyset(&sa.sa_mask);
+	sa.sa_flags = 0;
+	sa.sa_handler = NULL;
+	sigaction(SIG_SET, &sa, NULL);*/
+}
+
 
 /* Make this player play the current set
  * storing their score in the set_score
@@ -161,16 +193,7 @@ void player_play_set(unsigned long int* set_score){
 	}
 }
 
-/* Handler function for a player process.
- * It should only be used with SIG_SET
- * signal. Makes the player stop playing 
- * the set if they were playing.*/
-void handler_players_set(int signum) {
-	assert(signum == SIG_SET);
-	// Check if set is to start or finish
-	if(player_is_playing()) 
-		player_stop_playing();
-}
+
 
 // TODO: documentation
 void player_at_court(player_t* player, log_t* log, int court_fifo, int player_fifo) {
@@ -260,30 +283,13 @@ void player_join_court(player_t* player, log_t* log) {
 	if (close(court_fifo) < 0)
 		log_write(log, ERROR_L, "Player %03d close court_fifo error [errno: %d]\n", player->id, errno);
 
-	if (close(my_fifo) < 0);
+	if (close(my_fifo) < 0)
 		log_write(log, ERROR_L, "Player %03d close self_fifo error [errno: %d]\n", player->id, errno);
 }
 
 
 
-void player_set_sigset_handler() {
-	// Set the hanlder for the SIG_SET signal
-	struct sigaction sa;
-	sigset_t sigset;	
-	sigemptyset(&sa.sa_mask);
-	sa.sa_flags = 0;
-	sa.sa_handler = handler_players_set;
-	sigaction(SIG_SET, &sa, NULL);
-}
 
-void player_unset_sigset_handler() {
-	struct sigaction sa;
-	sigset_t sigset;	
-	sigemptyset(&sa.sa_mask);
-	sa.sa_flags = 0;
-	sa.sa_handler = NULL;
-	sigaction(SIG_SET, &sa, NULL);
-}
 
 /* Function that makes the process adopt
  * a player's role. Basically, it creates
@@ -344,8 +350,8 @@ void player_main(unsigned int id, log_t* log) {
 
 	player_destroy(player);
 
-	log_close(log);
-	exit(0);
+	usleep(rand() % 20000);
+	return; // Have to return to main to destroy things
 	// Beware! Returns to main!
 }
 

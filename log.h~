@@ -10,6 +10,7 @@
 
 /* Log structure used to represent the log. 
  * Shall we add more fields to it? */
+ // TODO: Add a lock for writing in the lock
 typedef struct log_ {
 	FILE* log_file;
 	struct timeval time_created;
