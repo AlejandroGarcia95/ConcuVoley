@@ -340,7 +340,7 @@ void player_main(unsigned int id, log_t* log) {
 		if (semop(sem, &s, 1) < 0)
 			log_write(log, ERROR_L, "Player %03d error taken semaphore [errno: %d]\n", player->id, errno);
 
-		player_s2t_sigset_handler();
+		player_set_sigset_handler();
 		log_write(log, INFO_L, "Player %03d took semaphore\n", player->id);
 		player_join_court(player, log);
 
