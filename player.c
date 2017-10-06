@@ -11,7 +11,7 @@
 #include "court.h"
 
 #include "protocol.h"
-#include <sys/sem.h>
+#include "semaphore.h"
 
 // In microseconds!
 #define MIN_SCORE_TIME 15000
@@ -328,16 +328,13 @@ void player_main(unsigned int id, log_t* log) {
 
 	// Get the court key!!
 	// TODO: change it so it grabs the key to the court it wanna join
-	key_t key = ftok("fifos/court.fifo", 6);
-	int sem = semget(key, 1, 0666);
+	int sem = sem_get("fifos/court.fifo", 1);
 	if (sem < 0)
 		log_write(log, ERROR_L, "Error opening the semaphore at player %03d [errno: %d]\n", player->id, errno);
 
-	struct sembuf s = {};
 	int i, r;
 	for (i = 0; i < 2; i++) {
-		s.sem_op = -1;
-		if (semop(sem, &s, 1) < 0)
+		if (sem_wait(sem, 0) < 0)
 			log_write(log, ERROR_L, "Player %03d error taken semaphore [errno: %d]\n", player->id, errno);
 
 		player_set_sigset_handler();
@@ -345,8 +342,7 @@ void player_main(unsigned int id, log_t* log) {
 		player_join_court(player, log);
 
 
-		s.sem_op = 1;
-		if (semop(sem, &s, 1) < 0)
+		if (sem_post(sem, 0) < 0)
 			log_write(log, ERROR_L, "Player %03d error taken semaphore [errno: %d]\n", player->id, errno);
 		log_write(log, INFO_L, "Player %03d released semaphore\n", player->id);
 		
@@ -355,6 +351,7 @@ void player_main(unsigned int id, log_t* log) {
 		unsigned long int t_rand = rand() % 2000000;
 		usleep(t_rand);
 	}
+	
 
 	log_write(log, INFO_L, "Player %03d is leaving\n", player->id);
 	player_destroy(player);

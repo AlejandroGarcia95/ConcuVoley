@@ -20,10 +20,8 @@
 #include "namegen.h"
 #include "partners_table.h"
 #include "protocol.h"
+#include "semaphore.h"
 
-// Semaphores
-#include <sys/sem.h>
-	
 #define LOG_ROUTE "ElLog.txt"
 
 
@@ -95,26 +93,20 @@ int main(int argc, char **argv){
 	court_t* court = court_create(log, pt);
  
 
-	// Creo un set de CUATRO semáforos (just for show!)
 	// Como es un semaphore set.. se pueden crear de un saque todos lo semáforos!
-	key_t key = ftok("fifos/court.fifo", 6);
-	int sem = semget(key, 1, IPC_CREAT | 0666);
+	int sem = sem_get("fifos/court.fifo", 1);
 	if (sem < 0)
 		log_write(log, ERROR_L, "Error creating semaphore [errno: %d]\n", errno);
 
-	// A cada semáforo le asigno un valor de 4
-	int i;
-	for (i = 0; i < 1; i++) {
-		if (semctl(sem, i, SETVAL, 4) < 0)
-			log_write(log, ERROR_L, "Error SETVAL the semaphore [errno: %d]\n", errno);
-	}
+	if (sem_init_all(sem, 1, 4) < 0)
+		log_write(log, ERROR_L, "Error initializing the semaphore [errno: %d]\n", errno);
 
 	// Let's launch player processes and make them play, yay!
 	
 	// We want main process to ignore SIG_SET signal as
 	// it's just for players processes
 	signal(SIG_SET, SIG_IGN);
-	int j;
+	int i, j;
 	// Launch players processes
 	for(i = 0; i < TOTAL_PLAYERS; i++){
 		if (getpid() == main_pid)

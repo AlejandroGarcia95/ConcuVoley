@@ -3,3 +3,5 @@
 *.txt
 main
 fifos/
+locks/
+*~
