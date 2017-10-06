@@ -186,6 +186,7 @@ void open_court_fifo(court_t* court, log_t* log){
 	if (court->court_fifo < 0) {
 		log_write(log, INFO_L, "Court FIFO is closed, need to open one\n", errno);
 		int court_fifo = open(court->court_fifo_name, O_RDONLY);
+		log_write(log, INFO_L, "Court FIFO opened!!!\n", errno);
 		if (court_fifo < 0) {
 			log_write(log, ERROR_L, "FIFO opening error for court 000 [errno: %d]\n", errno);
 			exit(-1);

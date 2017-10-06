@@ -297,6 +297,29 @@ void player_join_court(player_t* player, log_t* log) {
 
 
 
+void player_looking_for_court(player_t* player, log_t* log) {
+	log_write(log, INFO_L, "Player %03d is looking for a court\n", player->id);
+
+	// Get the court key!!
+	// TODO: change it so it grabs the key to the court it wanna join
+	int sem = sem_get("fifos/court.fifo", 1);
+	if (sem < 0)
+		log_write(log, ERROR_L, "Error opening the semaphore at player %03d [errno: %d]\n", player->id, errno);
+
+	log_write(log, ERROR_L, "Got semaphore %d at player %03d\n", sem, player->id);
+	if (sem_wait(sem, 0) < 0)
+		log_write(log, ERROR_L, "Player %03d error taken semaphore [errno: %d]\n", player->id, errno);
+
+	player_set_sigset_handler();
+	log_write(log, INFO_L, "Player %03d took semaphore\n", player->id);
+	player_join_court(player, log);
+
+
+	if (sem_post(sem, 0) < 0)
+		log_write(log, ERROR_L, "Player %03d error taken semaphore [errno: %d]\n", player->id, errno);
+	log_write(log, INFO_L, "Player %03d released semaphore\n", player->id);
+}
+
 
 
 /* Function that makes the process adopt
@@ -326,25 +349,9 @@ void player_main(unsigned int id, log_t* log) {
 	log_write(log, INFO_L, "%s skill is: %d\n", p_name, player_get_skill());
 	
 
-	// Get the court key!!
-	// TODO: change it so it grabs the key to the court it wanna join
-	int sem = sem_get("fifos/court.fifo", 1);
-	if (sem < 0)
-		log_write(log, ERROR_L, "Error opening the semaphore at player %03d [errno: %d]\n", player->id, errno);
-
 	int i, r;
 	for (i = 0; i < 2; i++) {
-		if (sem_wait(sem, 0) < 0)
-			log_write(log, ERROR_L, "Player %03d error taken semaphore [errno: %d]\n", player->id, errno);
-
-		player_set_sigset_handler();
-		log_write(log, INFO_L, "Player %03d took semaphore\n", player->id);
-		player_join_court(player, log);
-
-
-		if (sem_post(sem, 0) < 0)
-			log_write(log, ERROR_L, "Player %03d error taken semaphore [errno: %d]\n", player->id, errno);
-		log_write(log, INFO_L, "Player %03d released semaphore\n", player->id);
+		player_looking_for_court(player, log);
 		
 		// Wait some tame before joining again
 		// TODO: Change for wait/broadcast or similar
@@ -357,6 +364,7 @@ void player_main(unsigned int id, log_t* log) {
 	player_destroy(player);
 
 	usleep(rand() % 20000);
+	exit(0);
 	return; // Have to return to main to destroy things
 	// Beware! Returns to main!
 }

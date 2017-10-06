@@ -12,7 +12,8 @@
 #include "protocol.h"
 
 // Temporary
-#define TOTAL_PLAYERS 8
+#define TOTAL_PLAYERS 4
+#define TOTAL_COURTS 1
 #define NUM_MATCHES 2
 
 

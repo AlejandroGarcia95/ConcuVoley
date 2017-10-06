@@ -52,11 +52,52 @@ int launch_player(unsigned int player_id, log_t* log) {
 		return -1;
 	} else if (pid == 0) { // Son aka player
 		player_main(player_id, log);
-	} else { // Father aka main process
-		player_id++;
-	}
+	} 
 	return 0;
 }
+
+
+
+// TODO: make so it is not necesary to pass pointer to partners table
+int launch_court(unsigned int court_id, log_t* log, partners_table_t* pt) {
+	log_write(log, INFO_L, "Launching court %03d!\n", court_id);
+
+	// New process, new court!
+	pid_t pid = fork();
+
+	if (pid < 0) { // Error
+		log_write(log, ERROR_L, "Fork failed!\n");
+		return -1;
+	} else if (pid == 0) { // Son aka court
+		// Launch a single court, then end the tournament
+		court_t* court = court_create(log, pt);
+
+		// Como es un semaphore set.. se pueden crear de un saque todos lo semáforos!
+		int sem = sem_get("fifos/court.fifo", 1);
+		if (sem < 0)
+			log_write(log, ERROR_L, "Error creating semaphore [errno: %d]\n", errno);
+
+		log_write(log, ERROR_L, "Got semaphore %d at main\n", sem);
+		if (sem_init(sem, 0, 4) < 0)
+			log_write(log, ERROR_L, "Error initializing the semaphore [errno: %d]\n", errno);
+
+		int i;
+		for (i = 0; i < NUM_MATCHES; i++) 
+			court_lobby(court, log);
+
+		for (i = 0; i < TOTAL_PLAYERS; i++) 
+			log_write(log, INFO_L, "Player %03d won a total of %d matches\n", i, court->player_points[i]);
+		log_write(log, INFO_L, "Destroying court\n", i, court->player_points[i]);
+		court_destroy(court);
+		sem_destroy(sem);
+		log_close(log);
+		exit(0);
+	}
+	return 0;
+
+}
+
+
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
  * 
@@ -74,6 +115,7 @@ int main(int argc, char **argv){
 	// otherwise, you don't know where you are going."
 	pid_t main_pid = getpid();
 	
+	// TODO: refactor this, extract in init() function
 	log_t* log = log_open(LOG_ROUTE, false, time_start);
 	if(!log){
 		printf("FATAL: No log could be opened!\n");
@@ -89,55 +131,42 @@ int main(int argc, char **argv){
 		log_write(log, ERROR_L, "Error creating partners table [errno: %d]\n", errno);
 	}
 
-	// Launch a single court, then end the tournament
-	court_t* court = court_create(log, pt);
- 
-
-	// Como es un semaphore set.. se pueden crear de un saque todos lo semáforos!
-	int sem = sem_get("fifos/court.fifo", 1);
-	if (sem < 0)
-		log_write(log, ERROR_L, "Error creating semaphore [errno: %d]\n", errno);
-
-	if (sem_init_all(sem, 1, 4) < 0)
-		log_write(log, ERROR_L, "Error initializing the semaphore [errno: %d]\n", errno);
-
 	// Let's launch player processes and make them play, yay!
 	
 	// We want main process to ignore SIG_SET signal as
 	// it's just for players processes
 	signal(SIG_SET, SIG_IGN);
-	int i, j;
+	int i;
+	// Launch court processes
+	for (i = 0; i < TOTAL_COURTS; i++) {
+		launch_court(i, log, pt);
+	}
+
 	// Launch players processes
 	for(i = 0; i < TOTAL_PLAYERS; i++){
-		if (getpid() == main_pid)
-			launch_player(i, log);
+		launch_player(i, log);
 	}
 
-	// The children/player processes reach here
-	// once they're done playing the matches.
-	// Then, if we're a player, we should die here
+	// No child proccess should end here
+	// ALL childs must finish with a exit(status) call.
+	// The only cleaning to be done by them is log_close(log)
 	if(getpid() != main_pid){
-		log_write(log, INFO_L, "Proccess pid %d about to finish correctly \n", getpid());
-		court_destroy(court);
-		partners_table_destroy(pt);	
-		log_close(log);
-		return 0;
+		assert(false);
+		//log_write(log, INFO_L, "Proccess pid %d about to finish correctly \n", getpid());
+		//court_destroy(court);
+		//partners_table_destroy(pt);	
+		//log_close(log);
+		//return 0;
 	}
-
-	for (j = 0; j < NUM_MATCHES; j++) 
-		court_lobby(court, log);
 	
-	for (i = 0; i < TOTAL_PLAYERS; i++) 
-		log_write(log, INFO_L, "Player %03d won a total of %d matches\n", i, court->player_points[i]);
 
-
-	for (i = 0; i < TOTAL_PLAYERS; i++) {
+	for (i = 0; i < (TOTAL_PLAYERS + TOTAL_COURTS); i++) {
 		int status;
 		int pid = wait(&status);
 		int ret = WEXITSTATUS(status);
 		log_write(log, INFO_L, "Proccess pid %d finished with exit status %d\n", pid, ret);
 	}
-	court_destroy(court);
+
 	partners_table_free_table(pt);		
 	log_close(log);
 	return 0;
