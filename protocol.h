@@ -20,6 +20,7 @@
 #define MAX_FIFO_NAME_LEN 50
 #define FIFO_CREAT_FLAGS (S_IFIFO | 0666)
 
+#define MAIN_FIFO_NAME ("fifos/main.fifo")
 /*
  *			FIFO Naming convention
  *
@@ -29,7 +30,7 @@
  *	(i.e. if player_id = 1 then the fifo is fifos/player_001.fifo
  *
  * If you are a court, your fifo is...
- *		fifos/player_{id}.fif
+ *		fifos/court_{id}.fifo
  *	where {id} is your court_id, with exactly 3 digits
  */
 
@@ -47,6 +48,7 @@ struct message {
 	msg_type m_type;
 	unsigned int m_player_id;
 	unsigned long int m_score;
+	unsigned int m_court_id;
 };
 
 typedef struct message message_t;
@@ -54,6 +56,7 @@ typedef struct message message_t;
 /* Stores player's fifo filename from their id on dest_buffer.
  * Returns true if it was successful, or false otherwise.*/
 bool get_player_fifo_name(unsigned int id, char* dest_buffer);
+bool get_court_fifo_name(unsigned int id, char* dest_buffer);
 
 bool create_fifo(char* fifo_name);
 

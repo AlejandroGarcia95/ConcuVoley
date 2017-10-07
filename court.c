@@ -65,7 +65,7 @@ void connect_player_in_team(court_t* court, log_t* log, unsigned int p_id, unsig
 	court->player_connected[match_id] = p_id;
 	court->player_team[match_id] = team;
 	court->player_number[p_id] = match_id;
-	log_write(log, INFO_L, "Player %03d is connected at court 000 for team %d\n", p_id, team + 1);
+	log_write(log, INFO_L, "Player %03d is connected at court %03d for team %d\n", p_id, court->court_id, team + 1);
 
 	message_t msg = {};
 	msg.m_player_id = p_id;
@@ -188,7 +188,7 @@ void open_court_fifo(court_t* court, log_t* log){
 		int court_fifo = open(court->court_fifo_name, O_RDONLY);
 		log_write(log, INFO_L, "Court FIFO opened!!!\n", errno);
 		if (court_fifo < 0) {
-			log_write(log, ERROR_L, "FIFO opening error for court 000 [errno: %d]\n", errno);
+			log_write(log, ERROR_L, "FIFO opening error for court %03d [errno: %d]\n", court->court_id, errno);
 			exit(-1);
 		}
 		court->court_fifo = court_fifo;
@@ -201,22 +201,13 @@ void open_court_fifo(court_t* court, log_t* log){
  * Pre 1: The players processes were already created the fifos for communicating with
  * them are the ones received.
  * Pre 2: The players processes ARE CHILDREN PROCESSES of the process using this court.*/
-court_t* court_create(log_t* log,  partners_table_t* pt) {
+court_t* court_create(unsigned int court_id, log_t* log, partners_table_t* pt) {
 
 	court_t* court = malloc(sizeof(court_t));
 	if (!court) return NULL;
 	
-	// Creating fifo for court
-	// Ideally move this to main as the courts are build
-	// Why should it be moved to main? It could stay here by receiving a court
-	// id number as an argument (i.e. "court_create(log_t* log, int court_id)" )
-	char* court_fifo_name = "fifos/court.fifo";
-	if(!create_fifo(court_fifo_name)) {
-		log_write(log, ERROR_L, "FIFO creation error for court 000 [errno: %d]\n", errno);
-		exit(-1);
-	}
-	court->court_fifo_name = court_fifo_name;
 	court->court_fifo = -1;
+	court->court_id = court_id;
 	int i;
 	for (i = 0; i < PLAYERS_PER_MATCH; i++) {
 		court->player_fifos[i] = -1;
@@ -261,24 +252,24 @@ void court_lobby(court_t* court, log_t* log) {
 		
 		// A connection has been made! Waiting for initial message!
 		if(!receive_msg(court->court_fifo, &msg)) {
-			log_write(log, ERROR_L, "Court 000 bad read new connection message [errno: %d]\n", errno);
+			log_write(log, ERROR_L, "Court %03d bad read new connection message [errno: %d]\n", court->court_id, errno);
 			close(court->court_fifo);
 			court->court_fifo = -1;
 		} else {
 			if (msg.m_type != MSG_PLAYER_JOIN_REQ) {
-				log_write(log, ERROR_L, "Court 000 received a non-request-to-join msg\n");
+				log_write(log, ERROR_L, "Court %03d received a non-request-to-join msg\n", court->court_id);
 				close(court->court_fifo); // Why aborting instead of just ignoring the msg?
 				court->court_fifo = -1;
 			} else {
 				// Is a request, let's open other player's fifo!
 				char player_fifo_name[MAX_FIFO_NAME_LEN];
 				if(!get_player_fifo_name(msg.m_player_id, player_fifo_name)) {
-					log_write(log, ERROR_L, "FIFO opening error for player %d fifo at court 000 [errno: %d]\n", msg.m_player_id, errno);
+					log_write(log, ERROR_L, "FIFO opening error for player %d fifo at court %03d [errno: %d]\n", msg.m_player_id, court->court_id, errno);
 					return;
 				}
 				court->player_fifos[court->connected_players] = open(player_fifo_name, O_WRONLY);
 				if (court->player_fifos[court->connected_players] < 0) {
-					log_write(log, ERROR_L, "FIFO opening error for player %d fifo at court 000 [errno: %d]\n", msg.m_player_id, errno);
+					log_write(log, ERROR_L, "FIFO opening error for player %d fifo at court %03d [errno: %d]\n", msg.m_player_id, court->court_id, errno);
 				} else {
 					log_write(log, INFO_L, "Court will handle player %d\n", msg.m_player_id);
 					handle_player_team(court, log, msg);
@@ -333,9 +324,9 @@ void court_play(court_t* court, log_t* log){
 		// Wait for the four player's scores
 		for (i = 0; i < PLAYERS_PER_MATCH; i++){
 			if(!receive_msg(court->court_fifo, &msg))
-				log_write(log, ERROR_L, "Error reading score from player %03d at court 000 [errno: %d]\n", i, errno);
+				log_write(log, ERROR_L, "Error reading score from player %03d at court %03d [errno: %d]\n", i, court->court_id, errno);
 			else {
-				log_write(log, INFO_L, "Received %d from player %03d at court 000\n", msg.m_type, msg.m_player_id);
+				log_write(log, INFO_L, "Received %d from player %03d at court %03d\n", msg.m_type, msg.m_player_id, court->court_id);
 				assert(msg.m_type == MSG_PLAYER_SCORE);
 				players_scores[PLAYER_TO_MATCH(msg.m_player_id)] = msg.m_score;
 			}
@@ -411,4 +402,44 @@ size_t court_get_home_sets(court_t* court){
 
 size_t court_get_away_sets(court_t* court){
 	return (court ? court->sets_won_away : 0);
+}
+
+
+
+
+void court_main(unsigned int court_id, log_t* log, partners_table_t* pt) {
+
+	// Launch a single court, then end the tournament
+	// TODO: refactor this? Make it singleton to handle signals?
+	court_t* court = court_create(court_id, log, pt);
+
+	// Creating fifo for court
+	get_court_fifo_name(court_id, court->court_fifo_name);
+	if(!create_fifo(court->court_fifo_name)) {
+		log_write(log, ERROR_L, "FIFO creation error for court %03d [errno: %d]\n", errno, court->court_id);
+		exit(-1);
+	}
+
+	// Como es un semaphore set.. se pueden crear de un saque todos lo semáforos!
+	int sem = sem_get(court->court_fifo_name, 1);
+	if (sem < 0)
+		log_write(log, ERROR_L, "Error creating semaphore [errno: %d]\n", errno);
+
+	log_write(log, ERROR_L, "Got semaphore %d at main\n", sem);
+	if (sem_init(sem, 0, 4) < 0)
+		log_write(log, ERROR_L, "Error initializing the semaphore [errno: %d]\n", errno);
+
+	int i;
+	for (i = 0; i < NUM_MATCHES; i++) 
+		court_lobby(court, log);
+
+	for (i = 0; i < TOTAL_PLAYERS; i++) 
+		log_write(log, INFO_L, "Player %03d won a total of %d matches\n", i, court->player_points[i]);
+
+	log_write(log, INFO_L, "Destroying court\n", i, court->player_points[i]);
+	court_destroy(court);
+	sem_destroy(sem);
+	log_close(log);
+	exit(0);
+
 }

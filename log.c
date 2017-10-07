@@ -64,10 +64,11 @@ void log_close(log_t* log){
 	if(log && log->log_file)
 		fclose(log->log_file);
 		
-	lock_destroy(log->lock);
 	// lock_destroy(log->lock);	
-	if(log)
+	if(log) {
+		lock_destroy(log->lock);
 		free(log);
+	}
 }
 
 /* Write string msg to the received log file, using the log

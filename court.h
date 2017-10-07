@@ -41,9 +41,10 @@ typedef struct court_team_ {
  * bool close_pipes field determinates if
  * the court is to close them.*/
 typedef struct court_ {
+	unsigned int court_id;
 	int player_fifos[PLAYERS_PER_MATCH];
 	int court_fifo;
-	char* court_fifo_name;
+	char court_fifo_name[MAX_FIFO_NAME_LEN];
 	bool close_pipes; 
 	// Prop: send this scores to the court_team_t structure
 	uint8_t sets_won_home;
@@ -95,7 +96,7 @@ void court_team_kick_players(court_team_t* team);
  * with them are the ones received.
  * Pre 2: The players processes ARE CHILDREN
  * PROCESSES of the process using this court.*/
-court_t* court_create(log_t* log, partners_table_t* pt);
+court_t* court_create(unsigned int court_id, log_t* log, partners_table_t* pt);
 
 /* Kills the received court and sends flowers
  * to his widow.*/

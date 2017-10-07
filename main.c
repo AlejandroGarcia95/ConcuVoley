@@ -52,6 +52,7 @@ int launch_player(unsigned int player_id, log_t* log) {
 		return -1;
 	} else if (pid == 0) { // Son aka player
 		player_main(player_id, log);
+		assert(false);	// Should not return!
 	} 
 	return 0;
 }
@@ -69,29 +70,8 @@ int launch_court(unsigned int court_id, log_t* log, partners_table_t* pt) {
 		log_write(log, ERROR_L, "Fork failed!\n");
 		return -1;
 	} else if (pid == 0) { // Son aka court
-		// Launch a single court, then end the tournament
-		court_t* court = court_create(log, pt);
-
-		// Como es un semaphore set.. se pueden crear de un saque todos lo semáforos!
-		int sem = sem_get("fifos/court.fifo", 1);
-		if (sem < 0)
-			log_write(log, ERROR_L, "Error creating semaphore [errno: %d]\n", errno);
-
-		log_write(log, ERROR_L, "Got semaphore %d at main\n", sem);
-		if (sem_init(sem, 0, 4) < 0)
-			log_write(log, ERROR_L, "Error initializing the semaphore [errno: %d]\n", errno);
-
-		int i;
-		for (i = 0; i < NUM_MATCHES; i++) 
-			court_lobby(court, log);
-
-		for (i = 0; i < TOTAL_PLAYERS; i++) 
-			log_write(log, INFO_L, "Player %03d won a total of %d matches\n", i, court->player_points[i]);
-		log_write(log, INFO_L, "Destroying court\n", i, court->player_points[i]);
-		court_destroy(court);
-		sem_destroy(sem);
-		log_close(log);
-		exit(0);
+		court_main(court_id + 55, log, pt);
+		assert(false); // Should not return!
 	}
 	return 0;
 
@@ -168,6 +148,8 @@ int main(int argc, char **argv){
 	}
 
 	partners_table_free_table(pt);		
+
+	log_write(log, INFO_L, "Tournament ended correctly \\o/\n");
 	log_close(log);
 	return 0;
 }
