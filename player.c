@@ -318,10 +318,21 @@ void player_join_court(player_t* player, unsigned int court_id, log_t* log) {
 
 
 
+/*
+ * The player who calls this function is willing to join a court. It will connect with
+ * main controller and send a "Gimme a place to play" message.
+ *
+ * It will sleep until it receives a response from main controller via it's own semaphore fifo.
+ * Two things can happen then:
+ *	- the message is of type MSG_FREE_COURT, and msg.m_court_id 
+ *	  tells which court the player can join.
+ *	- the message is of type MSG_TOURNAMENT_END, indicating no 
+ *	  more matchs will be played, and player should leave.
+ */
 void player_looking_for_court(player_t* player, log_t* log) {
 	log_write(log, INFO_L, "Player %03d is looking for a court\n", player->id);
 
-	unsigned int court_id = 55;
+	unsigned int court_id = 0;
 	log_write(log, INFO_L, "Player %03d found court %03d, attempting to join\n", player->id, court_id);
 	player_join_court(player, court_id, log);
 }
@@ -355,6 +366,9 @@ void player_main(unsigned int id, log_t* log) {
 	log_write(log, INFO_L, "%s skill is: %d\n", p_name, player_get_skill());
 	
 
+	// TODO: here player should decide whether to get into the stadium,
+	// leave if its already inside or look for a free court if it
+	// wants to play.
 	int i, r;
 	for (i = 0; i < 2; i++) {
 		player_looking_for_court(player, log);

@@ -21,6 +21,7 @@
 #include "partners_table.h"
 #include "protocol.h"
 #include "semaphore.h"
+#include "referee.h"
 
 #define LOG_ROUTE "ElLog.txt"
 
@@ -70,7 +71,7 @@ int launch_court(unsigned int court_id, log_t* log, partners_table_t* pt) {
 		log_write(log, ERROR_L, "Fork failed!\n");
 		return -1;
 	} else if (pid == 0) { // Son aka court
-		court_main(court_id + 55, log, pt);
+		court_main(court_id, log, pt);
 		assert(false); // Should not return!
 	}
 	return 0;
@@ -78,6 +79,22 @@ int launch_court(unsigned int court_id, log_t* log, partners_table_t* pt) {
 }
 
 
+
+
+int launch_referee(log_t* log, partners_table_t* pt) {
+	log_write(log, INFO_L, "Launching referee!\n");
+
+	pid_t pid = fork();
+
+	if (pid < 0) {
+		log_write(log, ERROR_L, "Fork failed!\n");
+		return -1;
+	} else if (pid == 0) {
+		referee_main(log, pt);
+		assert(false); // Should not return!
+	}
+	return 0;
+}
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
  * 
@@ -116,6 +133,10 @@ int main(int argc, char **argv){
 	// We want main process to ignore SIG_SET signal as
 	// it's just for players processes
 	signal(SIG_SET, SIG_IGN);
+
+	// We create a referee to administrate the tournament!
+	launch_referee(log, pt);
+
 	int i;
 	// Launch court processes
 	for (i = 0; i < TOTAL_COURTS; i++) {
