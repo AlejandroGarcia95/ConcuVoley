@@ -62,6 +62,33 @@ void referee_main(log_t* _log, partners_table_t* _pt) {
 	ref.ref_tnm.tnm_idle_players = 10;
 	do_something();
 
+	/*
+	 * while( !tournament_ends() ) {
+	 *	sem_wait(ref.ref_sem, 0);	// Esperar a que haya algún mensaje en la cola
+	 *
+	 *	read_msg();
+	 *	if (msg.type == MSG_PLAYER_IDLE) {
+	 *		idle_players++;
+	 *		players[msg.id] = TNM_P_IDLE;
+	 *		if (idle_players >= 4 & idle_courts > 0)
+	 *			create_match();
+	 *	} else if (msg.type = MSG_COURT_FREE) {
+	 *		idle_courts++;
+	 *		courts[msg.id] = TNM_C_FREE;
+	 *		if (idle_players >= 4 & idle_courts > 0)
+	 *			create_match();
+	 *	} else if (msg.type = MSG_PLAYER_LEAVES) {
+	 *		idle_players--;
+	 *		players[msg.id] = TNM_P_OUTSIDE;
+	 *	} else if (msg.type = MSG_PLAYER_EXITS) {
+	 *		check_if_tournament_should_end();
+	 *	}
+	 * }
+	 *
+	 */
+
+
+
 	log_write(myLog, CRITICAL_L, "Does this work??\n");
 	log_close(myLog);
 	exit(0);
