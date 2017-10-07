@@ -59,6 +59,7 @@ typedef struct message message_t;
  * Returns true if it was successful, or false otherwise.*/
 bool get_player_fifo_name(unsigned int id, char* dest_buffer);
 bool get_court_fifo_name(unsigned int id, char* dest_buffer);
+bool get_referee_fifo_name(char* dest_buffer);
 
 bool create_fifo(char* fifo_name);
 

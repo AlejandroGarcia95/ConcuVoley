@@ -52,8 +52,6 @@ partners_table_t* pt;
 
 void do_something() {
 	log_write(myLog, CRITICAL_L, "Magic %d\n", ref.ref_tnm.tnm_idle_players);
-
-
 }
 
 

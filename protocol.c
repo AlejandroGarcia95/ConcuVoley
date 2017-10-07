@@ -24,6 +24,14 @@ bool get_court_fifo_name(unsigned int id, char* dest_buffer) {
 	return true;
 }
 
+/* Stores referee's fifo filename from their id on dest_buffer.
+ * Returns true if it was successful, or false otherwise.*/
+bool get_referee_fifo_name(char* dest_buffer) {
+	if(sprintf(dest_buffer, "fifos/referee.fifo") < 0)
+		return false;
+	return true;
+}
+
 bool create_fifo(char* fifo_name){
 	if(mknod(fifo_name, FIFO_CREAT_FLAGS, 0) < 0)
 		return false;
