@@ -14,7 +14,7 @@
 // Temporary
 #define TOTAL_PLAYERS 4
 #define TOTAL_COURTS 1
-#define NUM_MATCHES 2
+#define NUM_MATCHES 3
 
 
 #define MAX_FIFO_NAME_LEN 50

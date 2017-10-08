@@ -3,7 +3,7 @@
 #include <sys/types.h>
 #include <sys/ipc.h>
 #include <sys/sem.h>
-
+#include "log.h"
 #include <assert.h>
 
 // Constant to pass as second parameter for keys
@@ -22,6 +22,10 @@
 int sem_get(char* filename, int semnum) {
 	assert(semnum >= 0);
 	key_t key = ftok(filename, MAGIC_NUM);
+	if(key < 0) {
+		log_write(ERROR_L, "sem_get: ftok failure\n");
+		return -1;
+	}
 	return semget(key, semnum, IPC_CREAT | SEM_PERM);
 }
 

@@ -66,13 +66,13 @@ void connect_player_in_team(court_t* court, unsigned int p_id, unsigned int team
 	court->player_connected[match_id] = p_id;
 	court->player_team[match_id] = team;
 	court->player_number[p_id] = match_id;
-	log_write(INFO_L, "Player %03d is connected at court %03d for team %d\n", p_id, court->court_id, team + 1);
+	log_write(INFO_L, "Court %03d: Player %03d is connected at this court for team %d\n", court->court_id, p_id, team + 1);
 
 	message_t msg = {};
 	msg.m_player_id = p_id;
 	msg.m_type = MSG_MATCH_ACCEPT;
 	if (!send_msg(court->player_fifos[match_id], &msg)) {
-		log_write(ERROR_L, "Court failed to send accept msg to player %03d [errno: %d]\n", p_id, errno);
+		log_write(ERROR_L, "Court %03d: Failed to send accept msg to player %03d [errno: %d]\n", court->court_id, p_id, errno);
 		exit(-1);	// TODO: don't bail, just revert changes
 	}
 
@@ -84,7 +84,7 @@ void reject_player(court_t* court, unsigned int p_id) {
 	msg.m_player_id = p_id;
 	msg.m_type = MSG_MATCH_REJECT;
 	if (!send_msg(court->player_fifos[court->connected_players], &msg)) {
-		log_write(ERROR_L, "Court failed to send accept msg to player %03d [errno: %d]\n", p_id, errno);
+		log_write(ERROR_L, "Court %03d: Failed to send accept msg to player %03d [errno: %d]\n", court->court_id, p_id, errno);
 		exit(-1);	// TODO: don't bail, just revert changes
 	}
 
@@ -154,20 +154,20 @@ void handle_player_team(court_t* court, message_t msg){
 					}
 					else {
 						// Should not happen
-						log_write(CRITICAL_L, "Oops!! Player %03d tried to join a full match.!\n", msg.m_player_id);
+						log_write(CRITICAL_L, "Court %03d: Player %03d tried to join a full match\n", court->court_id, msg.m_player_id);
 						return;
 					}
 				}
 			}
 			if (!joined) {
-				log_write(CRITICAL_L, "Player %03d couldn't find a team, we should kick him!!\n", msg.m_player_id);
+				log_write(CRITICAL_L, "Court %03d: Player %03d couldn't find a team, we should kick him!!\n", court->court_id, msg.m_player_id);
 				reject_player(court, msg.m_player_id);
 				close(court->player_fifos[court->connected_players]);
 			}
 			break;
 			
 		default:
-			log_write(CRITICAL_L, "Wrong value for court->connected_players: %d\n", court->connected_players);
+			log_write(CRITICAL_L, "Court %03d: Wrong value for court->connected_players: %d\n", court->court_id, court->connected_players);
 			break; // Should not happen
 	}
 	
@@ -185,11 +185,11 @@ void handle_player_team(court_t* court, message_t msg){
  * Watch out! open is blocking!*/
 void open_court_fifo(court_t* court){
 	if (court->court_fifo < 0) {
-		log_write(INFO_L, "Court FIFO is closed, need to open one\n", errno);
+		log_write(INFO_L, "Court %03d: Court FIFO is closed, need to open one\n", court->court_id, errno);
 		int court_fifo = open(court->court_fifo_name, O_RDONLY);
-		log_write(INFO_L, "Court FIFO opened!!!\n", errno);
+		log_write(INFO_L, "Court %03d: Court FIFO opened!!!\n", court->court_id, errno);
 		if (court_fifo < 0) {
-			log_write(ERROR_L, "FIFO opening error for court %03d [errno: %d]\n", court->court_id, errno);
+			log_write(ERROR_L, "Court %03d: FIFO opening error [errno: %d]\n", court->court_id, errno);
 			exit(-1);
 		}
 		court->court_fifo = court_fifo;
@@ -200,8 +200,7 @@ void open_court_fifo(court_t* court){
 
 /* Dynamically creates a new court. Returns NULL in failure.
  * Pre 1: The players processes were already created the fifos for communicating with
- * them are the ones received.
- * Pre 2: The players processes ARE CHILDREN PROCESSES of the process using this court.*/
+ * them are the ones received.*/
 court_t* court_create(unsigned int court_id, partners_table_t* pt) {
 
 	court_t* court = malloc(sizeof(court_t));
@@ -228,7 +227,6 @@ court_t* court_create(unsigned int court_id, partners_table_t* pt) {
 /* Kills the received court and sends flowers
  * to his widow.*/
 void court_destroy(court_t* court){
-	
 	free(court);
 	// Sry, no flowers
 }
@@ -243,37 +241,37 @@ void court_destroy(court_t* court){
  // TODO: Refactor using new court_team_t
 void court_lobby(court_t* court) {
 
-	log_write(INFO_L, "A new match is about to begin... lobby\n", errno);
+	log_write(INFO_L, "Court %03d: A new match is about to begin... lobby\n", court->court_id, errno);
 	court->connected_players = 0;
 	message_t msg = {};
 
 	while (court->connected_players < PLAYERS_PER_MATCH) {
 		// Now court is in the "empty" state, waiting for new connections
 		open_court_fifo(court);
-		log_write(INFO_L, "Court awaiting connections\n", errno);
+		log_write(INFO_L, "Court %03d: Court awaiting connections\n", court->court_id, errno);
 		
 		// A connection has been made! Waiting for initial message!
 		if(!receive_msg(court->court_fifo, &msg)) {
-			log_write(ERROR_L, "Court %03d bad read new connection message [errno: %d]\n", court->court_id, errno);
+			log_write(ERROR_L, "Court %03d: Bad read new connection message [errno: %d]\n", court->court_id, errno);
 			close(court->court_fifo);
 			court->court_fifo = -1;
 		} else {
 			if (msg.m_type != MSG_PLAYER_JOIN_REQ) {
-				log_write(ERROR_L, "Court %03d received a non-request-to-join msg\n", court->court_id);
+				log_write(ERROR_L, "Court %03d: Received a non-request-to-join msg\n", court->court_id);
 				close(court->court_fifo); // Why aborting instead of just ignoring the msg?
 				court->court_fifo = -1;
 			} else {
 				// Is a request, let's open other player's fifo!
 				char player_fifo_name[MAX_FIFO_NAME_LEN];
 				if(!get_player_fifo_name(msg.m_player_id, player_fifo_name)) {
-					log_write(ERROR_L, "FIFO opening error for player %d fifo at court %03d [errno: %d]\n", msg.m_player_id, court->court_id, errno);
+					log_write(ERROR_L, "Court %03d: FIFO opening error for player %d fifo [errno: %d]\n", court->court_id, msg.m_player_id, errno);
 					return;
 				}
 				court->player_fifos[court->connected_players] = open(player_fifo_name, O_WRONLY);
 				if (court->player_fifos[court->connected_players] < 0) {
-					log_write(ERROR_L, "FIFO opening error for player %d fifo at court %03d [errno: %d]\n", msg.m_player_id, court->court_id, errno);
+					log_write(ERROR_L, "Court %03d: FIFO opening error for player %d fifo [errno: %d]\n", court->court_id, msg.m_player_id, errno);
 				} else {
-					log_write(INFO_L, "Court will handle player %d\n", msg.m_player_id);
+					log_write(INFO_L, "Court %03d: Court will handle player %d\n", court->court_id, msg.m_player_id);
 					handle_player_team(court, msg);
 				}
 			}
@@ -308,7 +306,7 @@ void court_play(court_t* court){
 	for (j = 0; j < SETS_AMOUNT; j++) {
 		msg.m_type = MSG_SET_START;
 
-		log_write(NONE_L, "Set %d started!\n", j+1);
+		log_write(NONE_L, "Court %03d: Set %d started!\n", court->court_id, j+1);
 		// Here we make the four players play a set by  
 		// sending them a message through the pipe.  
 		// Change later for a better message protocol.
@@ -326,16 +324,16 @@ void court_play(court_t* court){
 		// Wait for the four player's scores
 		for (i = 0; i < PLAYERS_PER_MATCH; i++){
 			if(!receive_msg(court->court_fifo, &msg))
-				log_write(ERROR_L, "Error reading score from player %03d at court %03d [errno: %d]\n", i, court->court_id, errno);
+				log_write(ERROR_L, "Court %03d: Error reading score from player %03d [errno: %d]\n", court->court_id, i, errno);
 			else {
-				log_write(INFO_L, "Received %d from player %03d at court %03d\n", msg.m_type, msg.m_player_id, court->court_id);
+				log_write(INFO_L, "Court %03d: Received %d from player %03d\n", court->court_id, msg.m_type, msg.m_player_id);
 				assert(msg.m_type == MSG_PLAYER_SCORE);
 				players_scores[PLAYER_TO_MATCH(msg.m_player_id)] = msg.m_score;
 			}
 		}
 		// Show this set score
 		for(i = 0; i < PLAYERS_PER_MATCH; i++)
-			log_write(NONE_L, "Player %03d set score: %ld\n", MATCH_TO_PLAYER(i), players_scores[i]);
+			log_write(NONE_L, "Court %03d: Player %03d set score: %ld\n", court->court_id, MATCH_TO_PLAYER(i), players_scores[i]);
 		
 		// Determinate the winner of the set
 		// I know this is my own code, but it's ugly.
@@ -381,7 +379,7 @@ void court_play(court_t* court){
 	}*/
 	
 	int won_team = (int) (court->sets_won_home < court->sets_won_away);  
-	log_write(NONE_L, "Team %d won!\n", won_team + 1);
+	log_write(NONE_L, "Court %03d: Team %d won!\n", court->court_id, won_team + 1);
 	for (i = 0; i < PLAYERS_PER_MATCH; i++)
 		if (court->player_team[i] == won_team)
 			court->player_points[MATCH_TO_PLAYER(i)]++;
@@ -417,32 +415,29 @@ void court_main(unsigned int court_id, partners_table_t* pt) {
 	if(!court)
 		exit(-1);
 		
-	log_write(INFO_L, "Launched new court [%03d]: using PID: %d\n", court->court_id, getpid());
+	log_write(INFO_L, "Court %03d: Launched using PID: %d\n", court->court_id, getpid());
 
-	// Creating fifo for court
 	get_court_fifo_name(court_id, court->court_fifo_name);
-	if(!create_fifo(court->court_fifo_name)) {
-		log_write(ERROR_L, "FIFO creation error for court %03d [errno: %d]\n", errno, court->court_id);
-		exit(-1);
-	}
-
 	// Como es un semaphore set.. se pueden crear de un saque todos lo semáforos!
 	int sem = sem_get(court->court_fifo_name, 1);
 	if (sem < 0)
-		log_write(ERROR_L, "Error creating semaphore [errno: %d]\n", errno);
+		log_write(ERROR_L, "Court %03d: Error creating semaphore [errno: %d]\n", court->court_id, errno);
 
-	log_write(ERROR_L, "Got semaphore %d at main\n", sem);
-	if (sem_init(sem, 0, 4) < 0)
-		log_write(ERROR_L, "Error initializing the semaphore [errno: %d]\n", errno);
+	log_write(INFO_L, "Court %03d: Got semaphore %d with name %s!!\n", court->court_id, sem, court->court_fifo_name);
+		if (sem_put(sem, 0, 4) < 0) {
+			log_write(ERROR_L, "Court %03d: Error initializing the semaphore [errno: %d]\n", court->court_id, errno);
+			exit(-1);
+		}
 
 	int i;
+	// TODO: Change for a 'graceful quit'
 	for (i = 0; i < NUM_MATCHES; i++) 
 		court_lobby(court);
 
 	for (i = 0; i < TOTAL_PLAYERS; i++) 
-		log_write(INFO_L, "Player %03d won a total of %d matches\n", i, court->player_points[i]);
+		log_write(INFO_L, "Court %03d: Player %03d won a total of %d matches\n", court->court_id, i, court->player_points[i]);
 
-	log_write(INFO_L, "Destroying court\n", i, court->player_points[i]);
+	log_write(INFO_L, "Court %03d: Destroying court\n", court->court_id, i, court->player_points[i]);
 	
 	partners_table_destroy(court->pt);
 	court_destroy(court);
