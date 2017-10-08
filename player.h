@@ -73,6 +73,6 @@ void player_stop_playing();
 /* Makes player stop playing.*/
 void player_start_playing();
 
-void player_main(unsigned int id, log_t* log);
+void player_main(unsigned int id);
 
 #endif

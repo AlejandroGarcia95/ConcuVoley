@@ -23,6 +23,8 @@ clean:
 	rm ElLog.txt
 	rm -f fifos/*
 	rm -f locks/*
+	touch makefile~
+	rm *~
 
 valgrind: clean $(PROGRAMA)
 	valgrind $(VFLAGS) ./$(PROGRAMA)

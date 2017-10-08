@@ -1,4 +1,7 @@
 
+
+#include <sys/types.h>
+#include <unistd.h>
 #include "semaphore.h"
 #include "partners_table.h"
 #include "log.h" 
@@ -7,6 +10,8 @@
 
 
 // Abbreviate maybe?
+// Neh... though I ain't like having this definitions
+// here instead of having'em in some .h
 typedef enum _player_status {
 	TNM_P_OUTSIDE,
 	TNM_P_IDLE,
@@ -44,6 +49,8 @@ typedef struct referee {
 
 // Referee variable local for this module.
 // Is this legit??
+// Legit or not, it's an ugly workaround on my opinion
+// I'd rather singletonize these, y'know
 referee_t ref = {};
 log_t* myLog;
 partners_table_t* pt;
@@ -51,16 +58,18 @@ partners_table_t* pt;
 
 
 void do_something() {
-	log_write(myLog, CRITICAL_L, "Magic %d\n", ref.ref_tnm.tnm_idle_players);
+	log_write(CRITICAL_L, "Magic %d\n", ref.ref_tnm.tnm_idle_players);
 }
 
 
 
-void referee_main(log_t* _log, partners_table_t* _pt) {
-	myLog = _log;
+void referee_main(partners_table_t* _pt) {
+	myLog = log_get_instance();
 	pt = _pt;
 	ref.ref_tnm.tnm_idle_players = 10;
 	do_something();
+
+	log_write(INFO_L, "Launched referee using PID: %d\n", getpid());
 
 	/*
 	 * while( !tournament_ends() ) {
@@ -89,7 +98,8 @@ void referee_main(log_t* _log, partners_table_t* _pt) {
 
 
 
-	log_write(myLog, CRITICAL_L, "Does this work??\n");
-	log_close(myLog);
+	log_write(CRITICAL_L, "Does this work??\n");
+	log_close();
+	partners_table_destroy(pt);
 	exit(0);
 }

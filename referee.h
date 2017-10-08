@@ -4,6 +4,6 @@
 #include "partners_table.h"
 #include "log.h" 
 
-void referee_main(log_t* log, partners_table_t* pt);
+void referee_main(partners_table_t* pt);
 
 #endif //REFEREE_H

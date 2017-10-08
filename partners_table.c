@@ -73,7 +73,7 @@ void partners_table_destroy(partners_table_t* pt){
  * call it.*/
 void partners_table_free_table(partners_table_t* pt){
 	if(!pt) return;
-	lock_destroy(pt->lock);
+
 	int idshm = pt->shmid;
 	partners_table_destroy(pt);
 	// Au revoir shared memory:

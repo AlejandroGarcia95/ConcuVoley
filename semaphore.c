@@ -15,12 +15,12 @@
 
 /*
  * Gets the semaphore set associated with file filename.
- * If the semaphore set does not exists, it will be created.
+ * If the semaphore set does not exist, it will be created.
  *
  * Returns semid on success, negative on error.
  */
 int sem_get(char* filename, int semnum) {
-	assert(semnum > 0);
+	assert(semnum >= 0);
 	key_t key = ftok(filename, MAGIC_NUM);
 	return semget(key, semnum, IPC_CREAT | SEM_PERM);
 }

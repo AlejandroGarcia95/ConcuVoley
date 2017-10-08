@@ -6,6 +6,9 @@
 #include <fcntl.h>
 #include <signal.h>
 #include <assert.h>
+#include <sys/types.h>
+#include <unistd.h>
+
 #include <errno.h>
 #include "player.h"
 #include "court.h"
@@ -196,7 +199,7 @@ void player_play_set(unsigned long int* set_score){
 
 
 // TODO: documentation
-void player_at_court(player_t* player, log_t* log, int court_fifo, int player_fifo) {
+void player_at_court(player_t* player, int court_fifo, int player_fifo) {
 	message_t msg = {};
 	char* p_name = player->name;
 	while(msg.m_type != MSG_MATCH_END){
@@ -204,7 +207,7 @@ void player_at_court(player_t* player, log_t* log, int court_fifo, int player_fi
 		int miss_count = 0;
 
 		if(!receive_msg(player_fifo, &msg)) {
-			log_write(log, ERROR_L, "Player %s: bad read [errno: %d]\n", p_name, errno);
+			log_write(ERROR_L, "Player %s: bad read [errno: %d]\n", p_name, errno);
 			close(court_fifo);
 			close(player_fifo);
 			exit(-1);
@@ -216,21 +219,21 @@ void player_at_court(player_t* player, log_t* log, int court_fifo, int player_fi
 			msg.m_player_id = player->id;
 	
 			// Play the set until it's done (by SIG_SET)
-			log_write(log, INFO_L, "Player %s started playing\n", p_name);
+			log_write(INFO_L, "Player %s started playing\n", p_name);
 			player_start_playing();
 			player_play_set(&set_score);
 			msg.m_score = set_score;
 			// When set is finished, we use the fifo to
 			// send main process our set_score
 			if(!send_msg(court_fifo, &msg))
-				log_write(log, ERROR_L, "Player %03d cannot write in court [errno: %d]\n", player->id, errno);
-			log_write(log, INFO_L, "Player %s finished set (scored %lu)\n", p_name, set_score);
+				log_write(ERROR_L, "Player %03d cannot write in court [errno: %d]\n", player->id, errno);
+			log_write(INFO_L, "Player %s finished set (scored %lu)\n", p_name, set_score);
 		} else {
-			log_write(log, INFO_L, "Player %s: wont start playing\n", p_name);
+			log_write(INFO_L, "Player %s: wont start playing\n", p_name);
 			miss_count++;
 			if (miss_count >= 100) {
 				// Have to really praise you for this
-				log_write(log, CRITICAL_L, "Have to shut down player %s [%03d]: wont start playing too many times (maybe deadlock)\n", p_name, player->id);
+				log_write(CRITICAL_L, "Have to shut down player %s [%03d]: wont start playing too many times (maybe deadlock)\n", p_name, player->id);
 				exit(-1);
 			}
 		}
@@ -238,7 +241,7 @@ void player_at_court(player_t* player, log_t* log, int court_fifo, int player_fi
 }
 
 // TODO: documentation xd
-void player_join_court(player_t* player, unsigned int court_id, log_t* log) {
+void player_join_court(player_t* player, unsigned int court_id) {
 
 	char court_fifo_name[MAX_FIFO_NAME_LEN];
 	get_court_fifo_name(court_id, court_fifo_name);
@@ -247,13 +250,13 @@ void player_join_court(player_t* player, unsigned int court_id, log_t* log) {
 	// TODO: change it so it grabs the key to the court it wanna join
 	int sem = sem_get(court_fifo_name, 1);
 	if (sem < 0)
-		log_write(log, ERROR_L, "Error opening the semaphore at player %03d [errno: %d]\n", player->id, errno);
+		log_write(ERROR_L, "Error opening the semaphore at player %03d [errno: %d]\n", player->id, errno);
 
 	if (sem_wait(sem, 0) < 0)
-		log_write(log, ERROR_L, "Player %03d error taken semaphore [errno: %d]\n", player->id, errno);
+		log_write(ERROR_L, "Player %03d error taken semaphore [errno: %d]\n", player->id, errno);
 
 	player_set_sigset_handler();
-	log_write(log, INFO_L, "Player %03d took semaphore\n", player->id);
+	log_write(INFO_L, "Player %03d took semaphore\n", player->id);
 
 	// Joining lobby!!
 	char* p_name;
@@ -261,17 +264,17 @@ void player_join_court(player_t* player, unsigned int court_id, log_t* log) {
 	// Open court fifo
 	int court_fifo = open(court_fifo_name, O_WRONLY);
 	if (court_fifo < 0) {
-		log_write(log, ERROR_L, "FIFO opening error for court %03d at player %03d [errno: %d]\n", player->id, court_id, errno);
+		log_write(ERROR_L, "FIFO opening error for court %03d at player %03d [errno: %d]\n", player->id, court_id, errno);
 		exit(-1);
 	}
-	log_write(log, INFO_L, "Player %03d opened court %03d FIFO\n", player->id, court_id);
+	log_write(INFO_L, "Player %03d opened court %03d FIFO\n", player->id, court_id);
 
 	// Send "I want to play" message
 	message_t msg = {};
 	msg.m_type = MSG_PLAYER_JOIN_REQ;
 	msg.m_player_id = player->id;
 	if(!send_msg(court_fifo, &msg)){
-		log_write(log, ERROR_L, "Player %03d failed to write to court %03d [errno: %d]\n", player->id, court_id, errno);
+		log_write(ERROR_L, "Player %03d failed to write to court %03d [errno: %d]\n", player->id, court_id, errno);
 		close(court_fifo);
 		exit(-1);
 	}
@@ -279,40 +282,40 @@ void player_join_court(player_t* player, unsigned int court_id, log_t* log) {
 	// Open self fifo (to rcv joined msg)
 	char my_fifo_name[MAX_FIFO_NAME_LEN];
 	if(!get_player_fifo_name(player->id, my_fifo_name)) {
-		log_write(log, ERROR_L, "FIFO opening error for player %03d at player %03d [errno: %d]\n", player->id, player->id, errno);
+		log_write(ERROR_L, "FIFO opening error for player %03d at player %03d [errno: %d]\n", player->id, player->id, errno);
 		exit(-1);
 	}
 	int my_fifo = open(my_fifo_name, O_RDONLY);
 	if (my_fifo < 0) {
-		log_write(log, ERROR_L, "FIFO opening error for player %03d at player %03d [errno: %d]\n", player->id, player->id, errno);
+		log_write(ERROR_L, "FIFO opening error for player %03d at player %03d [errno: %d]\n", player->id, player->id, errno);
 		exit(-1);
 	}
-	log_write(log, INFO_L, "Player %03d opened self FIFO\n", player->id);
+	log_write(INFO_L, "Player %03d opened self FIFO\n", player->id);
 
 	// If accepted join court
 	if(!receive_msg(my_fifo, &msg)) {
-		log_write(log, ERROR_L, "Player %03d error reading accepted/rejected msg [errno: %d]\n", player->id, errno);
+		log_write(ERROR_L, "Player %03d error reading accepted/rejected msg [errno: %d]\n", player->id, errno);
 		exit(-1);
 	}
 	// Received a msg!!
 	assert((msg.m_type == MSG_MATCH_ACCEPT) || (msg.m_type == MSG_MATCH_REJECT));
 	if (msg.m_type == MSG_MATCH_ACCEPT) {
-		player_at_court(player, log, court_fifo, my_fifo);
+		player_at_court(player, court_fifo, my_fifo);
 	} else {
-		log_write(log, ERROR_L, "Player %03d was rejected\n", player->id);
+		log_write(ERROR_L, "Player %03d was rejected\n", player->id);
 	}
 	player_unset_sigset_handler();
 
 	if (close(court_fifo) < 0)
-		log_write(log, ERROR_L, "Player %03d close court_fifo error [errno: %d]\n", player->id, errno);
+		log_write(ERROR_L, "Player %03d close court_fifo error [errno: %d]\n", player->id, errno);
 	if (close(my_fifo) < 0)
-		log_write(log, ERROR_L, "Player %03d close self_fifo error [errno: %d]\n", player->id, errno);
+		log_write(ERROR_L, "Player %03d close self_fifo error [errno: %d]\n", player->id, errno);
 
 
 	// Release semaphore
 	if (sem_post(sem, 0) < 0)
-		log_write(log, ERROR_L, "Player %03d error taken semaphore [errno: %d]\n", player->id, errno);
-	log_write(log, INFO_L, "Player %03d released semaphore\n", player->id);
+		log_write(ERROR_L, "Player %03d error taken semaphore [errno: %d]\n", player->id, errno);
+	log_write(INFO_L, "Player %03d released semaphore\n", player->id);
 
 }
 
@@ -329,12 +332,12 @@ void player_join_court(player_t* player, unsigned int court_id, log_t* log) {
  *	- the message is of type MSG_TOURNAMENT_END, indicating no 
  *	  more matchs will be played, and player should leave.
  */
-void player_looking_for_court(player_t* player, log_t* log) {
-	log_write(log, INFO_L, "Player %03d is looking for a court\n", player->id);
+void player_looking_for_court(player_t* player) {
+	log_write(INFO_L, "Player %03d is looking for a court\n", player->id);
 
 	unsigned int court_id = 0;
-	log_write(log, INFO_L, "Player %03d found court %03d, attempting to join\n", player->id, court_id);
-	player_join_court(player, court_id, log);
+	log_write(INFO_L, "Player %03d found court %03d, attempting to join\n", player->id, court_id);
+	player_join_court(player, court_id);
 }
 
 
@@ -349,7 +352,7 @@ void player_looking_for_court(player_t* player, log_t* log) {
  * (as a set could end unexpectedly). At
  * the end of each set, the player must
  * send through the fifo their score.*/
-void player_main(unsigned int id, log_t* log) {
+void player_main(unsigned int id) {
 	// Re-srand with a changed seed
 	srand(time(NULL) ^ (getpid() << 16));
 	char p_name[NAME_MAX_LENGTH];
@@ -362,8 +365,8 @@ void player_main(unsigned int id, log_t* log) {
 	player->id = id;
 	player_set_name(p_name);
 	
-	log_write(log, INFO_L, "Created new player [%03d]: %s\n", player->id, p_name);
-	log_write(log, INFO_L, "%s skill is: %d\n", p_name, player_get_skill());
+	log_write(INFO_L, "Launched new player [%03d]: %s using PID: %d\n", player->id, p_name, getpid());
+	log_write(INFO_L, "%s skill is: %d\n", p_name, player_get_skill());
 	
 
 	// TODO: here player should decide whether to get into the stadium,
@@ -371,7 +374,7 @@ void player_main(unsigned int id, log_t* log) {
 	// wants to play.
 	int i, r;
 	for (i = 0; i < 2; i++) {
-		player_looking_for_court(player, log);
+		player_looking_for_court(player);
 		
 		// Wait some tame before joining again
 		// TODO: Change for wait/broadcast or similar
@@ -380,9 +383,9 @@ void player_main(unsigned int id, log_t* log) {
 	}
 	
 
-	log_write(log, INFO_L, "Player %03d is leaving\n", player->id);
+	log_write(INFO_L, "Player %03d is leaving\n", player->id);
 	player_destroy(player);
-	log_close(log);
+	log_close();
 
 	//usleep(rand() % 20000);
 	exit(0);

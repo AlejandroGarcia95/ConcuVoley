@@ -96,7 +96,7 @@ void court_team_kick_players(court_team_t* team);
  * with them are the ones received.
  * Pre 2: The players processes ARE CHILDREN
  * PROCESSES of the process using this court.*/
-court_t* court_create(unsigned int court_id, log_t* log, partners_table_t* pt);
+court_t* court_create(unsigned int court_id, partners_table_t* pt);
 
 /* Kills the received court and sends flowers
  * to his widow.*/
@@ -110,8 +110,8 @@ void court_destroy(court_t* court);
  * was set on this court creation, this
  * function also closes the pipes file des-
  * criptors at the end of the court. */
-void court_play(court_t* court, log_t* log);
-void court_lobby(court_t* court, log_t* log);
+void court_play(court_t* court);
+void court_lobby(court_t* court);
 
 /* Finish the current set by signaling
  * the players with SIG_SET.*/

@@ -35,7 +35,7 @@ void get_time_string(log_t* log, char* str){
 /* Opens file at route and dynamically creates a log with it. 
  * If append is false, then the file is overwritten. Returns 
  * NULL if creating the log failed.*/
-log_t* log_open(char* route, bool append, struct timeval time_app_started){
+log_t* log_open(char* route, bool append){
 	FILE *pf = fopen(route, (append ? "a" : "w"));
 	if(!pf)	return NULL;
 	
@@ -47,7 +47,10 @@ log_t* log_open(char* route, bool append, struct timeval time_app_started){
 		
 	log->log_file = pf;
 	
-	log->time_created = time_app_started;
+	struct timeval time_start;
+	gettimeofday (&time_start, NULL);
+	
+	log->time_created = time_start;
 	
 	log->lock = lock_create("log");
 	if(!log->lock) {
@@ -59,8 +62,20 @@ log_t* log_open(char* route, bool append, struct timeval time_app_started){
 	return log;
 }
 
+/* Retrieves log singleton instance. */
+log_t* log_get_instance(){
+	static log_t* log = NULL;
+	// Check if there's log already
+	if(log)
+		return log;
+	// If not, create log
+	log = log_open(LOG_ROUTE, false);
+	return log;
+}
+
 /* Closes the received log file and destroys the log itself.*/
-void log_close(log_t* log){
+void log_close(){
+	log_t* log = log_get_instance();
 	if(log && log->log_file)
 		fclose(log->log_file);
 		
@@ -75,7 +90,8 @@ void log_close(log_t* log){
  * level specified for the writing. If successful, returns
  * the total of characters written. Otherwise, a negative
  * number is returned.*/
-int log_write(log_t* log, log_level lvl, char* msg, ... ){
+int log_write(log_level lvl, char* msg, ... ){
+	log_t* log = log_get_instance();	
 	if(!(log && log->log_file)) return -1;
 	lock_acquire(log->lock);
 	fflush(log->log_file);
