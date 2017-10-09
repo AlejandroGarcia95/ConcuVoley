@@ -16,6 +16,7 @@
 #define SETS_AMOUNT 5
 #define SETS_WINNING 3
 
+#define JOIN_ATTEMPTS_MAX (PLAYERS_PER_MATCH + 3) // 3 "wrong attempts" before kicking everyone
 
 #define SIG_SET SIGUSR1
 

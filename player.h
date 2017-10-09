@@ -26,7 +26,7 @@ typedef struct player_ {
 	int id;
 	char name[NAME_MAX_LENGTH];
 	size_t skill;
-	size_t courtes_played;
+	size_t matches_played;
 	bool currently_playing;
 } player_t;
 
@@ -43,15 +43,8 @@ void player_set_name(char* name);
 /* Returns the skill of the current player.*/
 size_t player_get_skill();
 
-/* Returns the amount of courtes played by the 
- * current player. */
-size_t player_get_courtes();
-
 /* Returns the name of the current player.*/
 char* player_get_name();
-
-/* Increase by 1 the amount of courtes played.*/
-void player_increase_courtes_played();
 
 /* Make this player play the current set
  * storing their score in the set_score

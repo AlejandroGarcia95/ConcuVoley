@@ -64,10 +64,21 @@ player_t* player_create(){
 	
 	// Initialize fields
 	player->skill = generate_random_skill();
-	player->courtes_played = 0;
+	player->matches_played = 0;
 	player->currently_playing = false;
 	player->id = 0;
 	return player;
+}
+
+/* Auxiliar function to replace all exit(-1) calls,
+ * offering the possibility of releasing resources.*/
+void player_seppuku(bool release_res){
+	if(release_res){
+		player_t* player =  player_get_instance();
+		player_destroy(player);
+		log_close();
+	}
+	exit(-1);
 }
 
 // ----------------------------------------------------------------
@@ -104,24 +115,10 @@ size_t player_get_skill(){
 	return (player ? player->skill : SKILL_MAX+8);
 }
 
-/* Returns the amount of courtes played by the 
- * current player. */
-size_t player_get_courtes(){
-	player_t* player = player_get_instance();
-	return (player ? player->courtes_played : 0);
-}
-
 /* Returns the name of the current player.*/
 char* player_get_name(){
 	player_t* player = player_get_instance();
 	return (player ? player->name : NULL);
-}
-
-/*Increase by 1 the amount of courtes played.*/
-void player_increase_courtes_played(){
-	player_t* player = player_get_instance();
-	if(player)
-		player->courtes_played++;
 }
 
 /* Returns true or false if the player
@@ -210,7 +207,7 @@ void player_at_court(player_t* player, int court_fifo, int player_fifo) {
 			log_write(ERROR_L, "Player %03d: Bad read [errno: %d]\n", player->id, errno);
 			close(court_fifo);
 			close(player_fifo);
-			exit(-1);
+			player_seppuku(true);
 		}
 
 		if(msg.m_type == MSG_SET_START) {
@@ -228,16 +225,25 @@ void player_at_court(player_t* player, int court_fifo, int player_fifo) {
 			if(!send_msg(court_fifo, &msg))
 				log_write(ERROR_L, "Player %03d: Cannot write in court [errno: %d]\n", player->id, errno);
 			log_write(INFO_L, "Player %03d: Finished set (scored %lu)\n", player->id, set_score);
+		} else if(msg.m_type == MSG_MATCH_REJECT){
+			// If here, player was accepted and was on the court a while
+			// but other players that arrived couldn't make a team with them.
+			// Hence, court kicked every player there
+			log_write(INFO_L, "Player %03d: Kicked from previously accepted court\n", player->id);
+			return;
 		} else {
 			log_write(INFO_L, "Player %03d: wont start playing\n", player->id);
 			miss_count++;
 			if (miss_count >= 100) {
 				// Have to really praise you for this
 				log_write(CRITICAL_L, "Player %03d: Have to shut down; wont start playing too many times (maybe deadlock)\n", player->id);
-				exit(-1);
+				player_seppuku(true);
 			}
 		}
 	}
+	
+	if(msg.m_type == MSG_MATCH_END) // Not needed for now, but good sanity check
+		player->matches_played++;
 }
 
 // TODO: documentation xd
@@ -266,7 +272,7 @@ void player_join_court(player_t* player, unsigned int court_id) {
 	int court_fifo = open(court_fifo_name, O_WRONLY);
 	if (court_fifo < 0) {
 		log_write(ERROR_L, "Player %03d: FIFO opening error for court %03d [errno: %d]\n", player->id, court_id, errno);
-		exit(-1);
+		player_seppuku(true);
 	}
 	log_write(INFO_L, "Player %03d: Opened court %03d FIFO\n", player->id, court_id);
 
@@ -277,26 +283,26 @@ void player_join_court(player_t* player, unsigned int court_id) {
 	if(!send_msg(court_fifo, &msg)){
 		log_write(ERROR_L, "Player %03d: Failed to write to court %03d [errno: %d]\n", player->id, court_id, errno);
 		close(court_fifo);
-		exit(-1);
+		player_seppuku(true);
 	}
 
 	// Open self fifo (to rcv joined msg)
 	char my_fifo_name[MAX_FIFO_NAME_LEN];
 	if(!get_player_fifo_name(player->id, my_fifo_name)) {
 		log_write(ERROR_L, "Player %03d: FIFO player opening error [errno: %d]\n", player->id, errno);
-		exit(-1);
+		player_seppuku(true);
 	}
 	int my_fifo = open(my_fifo_name, O_RDONLY);
 	if (my_fifo < 0) {
 		log_write(ERROR_L, "Player %03d: FIFO opening error for player [errno: %d]\n", player->id, errno);
-		exit(-1);
+		player_seppuku(true);
 	}
 	log_write(INFO_L, "Player %03d: Opened self FIFO\n", player->id);
 
 	// If accepted join court
 	if(!receive_msg(my_fifo, &msg)) {
 		log_write(ERROR_L, "Player %03d: Error reading accepted/rejected msg [errno: %d]\n", player->id, errno);
-		exit(-1);
+		player_seppuku(true);
 	}
 	// Received a msg!!
 	assert((msg.m_type == MSG_MATCH_ACCEPT) || (msg.m_type == MSG_MATCH_REJECT));
@@ -361,7 +367,7 @@ void player_main(unsigned int id) {
 	
 	player_t* player = player_get_instance();
 	if(!player)
-		exit(-1);
+		player_seppuku(false);
 
 	player->id = id;
 	player_set_name(p_name);
@@ -374,10 +380,10 @@ void player_main(unsigned int id) {
 	// leave if its already inside or look for a free court if it
 	// wants to play.
 	int i, r;
-	for (i = 0; i < NUM_MATCHES; i++) {
+	while(player->matches_played < NUM_MATCHES) {
 		player_looking_for_court(player);
 		
-		// Wait some tame before joining again
+		// Wait some time before joining again
 		// TODO: Change for wait/broadcast or similar
 		unsigned long int t_rand = rand() % 2000000;
 		usleep(t_rand);
@@ -387,10 +393,8 @@ void player_main(unsigned int id) {
 	log_write(INFO_L, "Player %03d: Now leaving\n", player->id);
 	player_destroy(player);
 	log_close();
-
-	//usleep(rand() % 20000);
 	exit(0);
-	return; // Have to return to main to destroy things
+	return; 
 	// Beware! Returns to main!
 }
 

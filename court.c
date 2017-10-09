@@ -113,8 +113,8 @@ void connect_player_in_team(court_t* court, unsigned int p_id, unsigned int team
 	message_t msg = {};
 	msg.m_player_id = p_id;
 	msg.m_type = MSG_MATCH_ACCEPT;
-	int match_id = court->connected_players;
-	if (!send_msg(court->player_fifos[match_id], &msg)) {
+
+	if (!send_msg(court->player_fifos[court->connected_players], &msg)) {
 		log_write(ERROR_L, "Court %03d: Failed to send accept msg to player %03d [errno: %d]\n", court->court_id, p_id, errno);
 		exit(-1);	// TODO: don't bail, just revert changes
 	}
@@ -128,7 +128,7 @@ void reject_player(court_t* court, unsigned int p_id) {
 	msg.m_player_id = p_id;
 	msg.m_type = MSG_MATCH_REJECT;
 	if (!send_msg(court->player_fifos[court->connected_players], &msg)) {
-		log_write(ERROR_L, "Court %03d: Failed to send accept msg to player %03d [errno: %d]\n", court->court_id, p_id, errno);
+		log_write(ERROR_L, "Court %03d: Failed to send reject msg to player %03d [errno: %d]\n", court->court_id, p_id, errno);
 		exit(-1);	// TODO: don't bail, just revert changes
 	}
 	close(court->player_fifos[court->connected_players]);
@@ -165,6 +165,7 @@ void handle_player_team(court_t* court, message_t msg){
 	switch(court->connected_players){
 		case 0: // First player to connect. Instantly accepted on team 0
 			connect_player_in_team(court, msg.m_player_id, 0);
+			join_attempts = 0; // Question for the reader: why is this line important?
 			break;
 		case 1: // Second player to connect.
 			// If can team up with first player, let them do it
@@ -180,25 +181,42 @@ void handle_player_team(court_t* court, message_t msg){
 				break; 
 				}
 			
-			if(court_team_is_full(court->team_home)) {
-				// Check if can join team1
-				if(court_team_player_can_join_team(court->team_away ,msg.m_player_id, court->pt))
-					connect_player_in_team(court, msg.m_player_id, 1);
-				else // kick player
-					reject_player(court, msg.m_player_id);
-			}
-			else {
-				// Check if can join team0
-				if(court_team_player_can_join_team(court->team_home ,msg.m_player_id, court->pt))
-					connect_player_in_team(court, msg.m_player_id, 0);
-				else // kick player
-					reject_player(court, msg.m_player_id);
-			}
+			// Check if can join team0
+			if(court_team_player_can_join_team(court->team_home ,msg.m_player_id, court->pt))
+				connect_player_in_team(court, msg.m_player_id, 0);
+			// Check if can join team1
+			else if(court_team_player_can_join_team(court->team_away ,msg.m_player_id, court->pt))
+				connect_player_in_team(court, msg.m_player_id, 1);
+			else // kick player
+				reject_player(court, msg.m_player_id);
+			
 		}
 		
 	join_attempts++;
-	if(join_attempts == 3) { // Or some other absurd limit
+	if(join_attempts == JOIN_ATTEMPTS_MAX) {
 		// Kick all players!
+		int i;
+		for(i = 0; i < court->connected_players; i++) {
+			int p_id = court_court_id_to_player(court, i);
+			
+			log_write(CRITICAL_L, "Court %03d: Player %03d remained too long, let's kick them!\n", court->court_id, p_id);
+			message_t msg = {};
+			msg.m_player_id = p_id;
+			msg.m_type = MSG_MATCH_REJECT;
+			if (!send_msg(court->player_fifos[i], &msg)) {
+				log_write(ERROR_L, "Court %03d: Failed to send reject msg to player %03d [errno: %d]\n", court->court_id, p_id, errno);
+				exit(-1);	// TODO: don't bail, just revert changes
+			}
+			close(court->player_fifos[i]);
+		}
+		court->connected_players = 0;
+		court_team_initialize(&court->team_home);
+		court_team_initialize(&court->team_away);
+		close(court->court_fifo);
+		court->court_fifo = -1;
+		for (i = 0; i < PLAYERS_PER_MATCH; i++) 
+			court->player_fifos[i] = -1;
+	
 		join_attempts = 0;
 		}
 }
@@ -457,7 +475,7 @@ void court_main(unsigned int court_id, partners_table_t* pt) {
 
 	int i;
 	// TODO: Change for a 'graceful quit'
-	for (i = 0; i < NUM_MATCHES; i++) 
+	for (i = 0; i < COURT_LIFE; i++) 
 		court_lobby(court);
 
 	for (i = 0; i < TOTAL_PLAYERS; i++) 
