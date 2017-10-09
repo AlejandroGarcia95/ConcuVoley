@@ -11,13 +11,14 @@
 #include <assert.h>
 #include "court.h"
 #include "log.h"
+#include "score_table.h"
 #include "partners_table.h"
 
 #include "protocol.h"
 
 // In microseconds!
-#define SET_MAX_DURATION 4000000 
-#define SET_MIN_DURATION 1000000 
+#define SET_MAX_DURATION 2500000 
+#define SET_MIN_DURATION 350000 
 
 
 // --------------- Court team section --------------
@@ -63,9 +64,12 @@ void court_team_join_player(court_team_t* team, unsigned int player_id){
 	team->team_size++;
 }
 
-/* Removes every player of the team from it.*/
-void court_team_kick_players(court_team_t* team){
-	court_team_initialize(team);
+/* Increases player's score for every player on the received team*/
+void court_team_add_score_players(court_team_t team, score_table_t* st, int score){
+	if(!st) return;
+	int i;
+	for (i = 0; i < team.team_size; i++)
+		increase_player_score(st, team.team_players[i], score);
 }
 
 // --------------- Auxiliar functions ---------------
@@ -100,6 +104,32 @@ unsigned int court_court_id_to_player(court_t* court, unsigned int pc_id){
 		team = court->team_away;
 	}
 	return team.team_players[pc_id];
+}
+
+void manage_players_scores(court_t* court){
+	int won_team = (int) (court->team_home.sets_won < court->team_away.sets_won);  
+	log_write(NONE_L, "Court %03d: Team %d won!\n", court->court_id, won_team + 1);
+	// Set scores properly
+	switch(court->team_home.sets_won){
+			case 0:
+			case 1:
+				assert(court->team_away.sets_won == 3);
+				court_team_add_score_players(court->team_away, court->st, 3);
+				break;
+			case 2:
+				assert(court->team_away.sets_won == 3);
+				court_team_add_score_players(court->team_away, court->st, 2);
+				court_team_add_score_players(court->team_home, court->st, 1);
+				break;
+			case 3:
+				if(court->team_away.sets_won == 2){
+					court_team_add_score_players(court->team_away, court->st, 1);
+					court_team_add_score_players(court->team_home, court->st, 2);
+				}
+				else
+					court_team_add_score_players(court->team_home, court->st, 3);
+				break;
+	}		
 }
 
 void connect_player_in_team(court_t* court, unsigned int p_id, unsigned int team){
@@ -243,7 +273,7 @@ void open_court_fifo(court_t* court){
 /* Dynamically creates a new court. Returns NULL in failure.
  * Pre 1: The players processes were already created the fifos for communicating with
  * them are the ones received.*/
-court_t* court_create(unsigned int court_id, partners_table_t* pt) {
+court_t* court_create(unsigned int court_id, partners_table_t* pt, score_table_t* st) {
 
 	court_t* court = malloc(sizeof(court_t));
 	if (!court) return NULL;
@@ -255,13 +285,10 @@ court_t* court_create(unsigned int court_id, partners_table_t* pt) {
 		court->player_fifos[i] = -1;
 	}
 
-	for (i = 0; i < TOTAL_PLAYERS; i++) {
-		court->player_points[i] = 0;
-	}
-
 	court_team_initialize(&court->team_away);
 	court_team_initialize(&court->team_home);
 	court->pt = pt;
+	court->st = st;
 	court->connected_players = 0;
 	return court;
 }
@@ -381,16 +408,12 @@ void court_play(court_t* court){
 			log_write(NONE_L, "Court %03d: Player %03d set score: %ld\n", court->court_id, p_id, players_scores[i]);
 			}
 		// Determinate the winner of the set
-		// I know this is my own code, but it's ugly.
-		// Prop: Rewrite this using court_team_t with scores
 		unsigned long int score_home = 0, score_away = 0;
 		for (i = 0; i < PLAYERS_PER_TEAM; i++) 
 			score_home += players_scores[i];
 			
 		for (i = PLAYERS_PER_TEAM; i < PLAYERS_PER_MATCH; i++) 
 			score_away += players_scores[i];
-
-
 		log_write(INFO_L, "Court %03d: This set ended (team 1, team 2): %d - %d\n", court->court_id, score_home, score_away);
 
 		if (score_home > score_away)
@@ -411,24 +434,8 @@ void court_play(court_t* court){
 		send_msg(court->player_fifos[i], &msg);
 	}
 
-
-	
-	int won_team = (int) (court->team_home.sets_won < court->team_away.sets_won);  
-	log_write(NONE_L, "Court %03d: Team %d won!\n", court->court_id, won_team + 1);
-	if(won_team)
-		for(i = PLAYERS_PER_TEAM; i < PLAYERS_PER_MATCH; i++) {
-			int p_id = court_court_id_to_player(court, i);
-			court->player_points[p_id]++;
-		}
-	else
-		for(i = 0; i < PLAYERS_PER_TEAM; i++) {
-			int p_id = court_court_id_to_player(court, i);
-			court->player_points[p_id]++;
-		}
-		
+	manage_players_scores(court);
 	mark_players_partners(court);
-//	court_team_kick_players(&court->team_away);
-//	court_team_kick_players(&court->team_home);
 }
 
 /* Finish the current set by signaling
@@ -451,11 +458,11 @@ size_t court_get_away_sets(court_t* court){
 
 
 
-void court_main(unsigned int court_id, partners_table_t* pt) {
+void court_main(unsigned int court_id, partners_table_t* pt, score_table_t* st) {
 
 	// Launch a single court, then end the tournament
 	// TODO: refactor this? Make it singleton to handle signals?
-	court_t* court = court_create(court_id, pt);
+	court_t* court = court_create(court_id, pt, st);
 	if(!court)
 		exit(-1);
 		
@@ -478,12 +485,12 @@ void court_main(unsigned int court_id, partners_table_t* pt) {
 	for (i = 0; i < COURT_LIFE; i++) 
 		court_lobby(court);
 
-	for (i = 0; i < TOTAL_PLAYERS; i++) 
-		log_write(INFO_L, "Court %03d: Player %03d won a total of %d matches\n", court->court_id, i, court->player_points[i]);
+	score_table_print(court->st);
 
 	log_write(INFO_L, "Court %03d: Destroying court\n", court->court_id);
 	
 	partners_table_destroy(court->pt);
+	score_table_destroy(court->st);
 	court_destroy(court);
 	sem_destroy(sem);
 	log_close();

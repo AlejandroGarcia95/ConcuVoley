@@ -6,6 +6,9 @@
 #include <stdbool.h>
 #include "lock.h"
 
+// Set this flag if players ids start ar 0; clear it if ids start at 1
+#define START_AT_ZERO 1
+
 typedef struct partners_table_ {
 	size_t players_amount;
 	int shmid;

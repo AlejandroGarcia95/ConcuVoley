@@ -7,6 +7,7 @@
 #include <stdbool.h>
 #include <signal.h>
 #include "log.h"
+#include "score_table.h"
 #include "partners_table.h"
 #include "protocol.h"
 
@@ -44,10 +45,9 @@ typedef struct court_ {
 	court_team_t team_home; // team 0
 	court_team_t team_away; // team 1
 	uint8_t connected_players;
+	
 	partners_table_t* pt;
-
-	// Remove this later
-	uint8_t player_points[TOTAL_PLAYERS];
+	score_table_t* st;
 } court_t;
 
 // --------------- Court team section --------------
@@ -68,8 +68,8 @@ bool court_team_player_in_team(court_team_t team, unsigned int player_id);
 /* Joins the received player to the team.*/
 void court_team_join_player(court_team_t* team, unsigned int player_id);
 
-/* Removes every player of the team from it.*/
-void court_team_kick_players(court_team_t* team);
+/* Increases player's score for every player on the received team*/
+void court_team_add_score_players(court_team_t team, score_table_t* st, int score);
 
 // --------------- Court section -------------------
 
@@ -86,7 +86,7 @@ void court_team_kick_players(court_team_t* team);
  * with them are the ones received.
  * Pre 2: The players processes ARE CHILDREN
  * PROCESSES of the process using this court.*/
-court_t* court_create(unsigned int court_id, partners_table_t* pt);
+court_t* court_create(unsigned int court_id, partners_table_t* pt, score_table_t* st);
 
 /* Kills the received court and sends flowers
  * to his widow.*/
@@ -118,6 +118,8 @@ unsigned int court_player_to_court_id(court_t* court, unsigned int player_id);
  * relative to this court and returns the player_id. Returns
  * something above TOTAL_PLAYERS in case of error.*/
 unsigned int court_court_id_to_player(court_t* court, unsigned int pc_id);
+
+void court_main(unsigned int court_id, partners_table_t* pt, score_table_t* st);
 
 /* Returns the sets won by home and away 
  * playes. If court is NULL, let them both 
