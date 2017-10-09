@@ -3,8 +3,11 @@
 #include <stdbool.h>
 #include <stdarg.h>
 #include <sys/time.h>
+#include <unistd.h>
 #include "lock.h"
 #include "log.h"
+
+
 
 /* Important comment about the log: La consigna dice que debería
  * tener un "modo debug" y que los mensajes de debug sólo se deberían
@@ -116,6 +119,7 @@ int log_write(log_level lvl, char* msg, ... ){
 	char* str_lvl;
 	switch(lvl){
 		case INFO_L: 
+		case NONE_L:
 			str_lvl = "INFO";
 			break;
 		case WARNING_L: 
@@ -129,8 +133,9 @@ int log_write(log_level lvl, char* msg, ... ){
 			break;
 		}
 			
-	fprintf(log->log_file, "[%s] [%s] ", time_str, str_lvl);
+	fprintf(log->log_file, "\x1b[39m[%s] [%s] \x1b[1;38;5;%dm", time_str, str_lvl, ((getpid() % 20) * 2 + 1));
 	vfprintf(log->log_file, msg, args);
+	//fprintf(log->log_file, "\x1b[37;1", time_str, str_lvl);
 	va_end(args);
 	fflush(log->log_file);
 	lock_release(log->lock);
