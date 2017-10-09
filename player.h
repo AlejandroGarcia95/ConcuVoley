@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include "log.h"
 
 #define NAME_MAX_LENGTH 50
 
@@ -19,9 +20,10 @@
  * the tournament. For the time being, each
  * player has name, a skill field which measures 
  * from 0 to SKILL_MAX how good that player is, 
- * and a matches_played field which counts how 
- * many matches the player has been in.*/
+ * and a courtes_played field which counts how 
+ * many courtes the player has been in.*/
 typedef struct player_ {
+	int id;
 	char name[NAME_MAX_LENGTH];
 	size_t skill;
 	size_t matches_played;
@@ -41,15 +43,8 @@ void player_set_name(char* name);
 /* Returns the skill of the current player.*/
 size_t player_get_skill();
 
-/* Returns the amount of matches played by the 
- * current player. */
-size_t player_get_matches();
-
 /* Returns the name of the current player.*/
 char* player_get_name();
-
-/* Increase by 1 the amount of matches played.*/
-void player_increase_matches_played();
 
 /* Make this player play the current set
  * storing their score in the set_score
@@ -70,5 +65,7 @@ void player_stop_playing();
 
 /* Makes player stop playing.*/
 void player_start_playing();
+
+void player_main(unsigned int id);
 
 #endif

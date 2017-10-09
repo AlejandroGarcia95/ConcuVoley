@@ -2,8 +2,18 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <stdarg.h>
-#include <time.h>
+#include <sys/time.h>
+#include "lock.h"
 #include "log.h"
+
+/* Important comment about the log: La consigna dice que debería
+ * tener un "modo debug" y que los mensajes de debug sólo se deberían
+ * imprimir en ese modo... Es decir, habría que agregar un flag en
+ * el log_open y que en el log_write sólo imprima los mensajes de E,W,I
+ * si el flag está en 1
+ * */
+
+// TODO: Add a lock to this (just uncomment the locks calls)
 
 /* Auxiliar function that creates a pretty-printeable
  * time string. The final string is stored at str.*/
@@ -12,7 +22,7 @@ void get_time_string(log_t* log, char* str){
 	gettimeofday (&time_now, NULL);
 	
 	unsigned long int timestamp = (time_now.tv_sec - log->time_created.tv_sec)*1000000L;
-    timestamp += (time_now.tv_usec - log->time_created.tv_usec);
+	timestamp += (time_now.tv_usec - log->time_created.tv_usec);
 	 // Check microseconds
 	if(timestamp < 1000L)
 		sprintf(str, "%lu Us", timestamp);
@@ -25,7 +35,7 @@ void get_time_string(log_t* log, char* str){
 /* Opens file at route and dynamically creates a log with it. 
  * If append is false, then the file is overwritten. Returns 
  * NULL if creating the log failed.*/
-log_t* log_open(char* route, bool append, struct timeval time_app_started){
+log_t* log_open(char* route, bool append){
 	FILE *pf = fopen(route, (append ? "a" : "w"));
 	if(!pf)	return NULL;
 	
@@ -37,25 +47,53 @@ log_t* log_open(char* route, bool append, struct timeval time_app_started){
 		
 	log->log_file = pf;
 	
-	log->time_created = time_app_started;
+	struct timeval time_start;
+	gettimeofday (&time_start, NULL);
+	
+	log->time_created = time_start;
+	
+	log->lock = lock_create("log");
+	if(!log->lock) {
+		fclose(pf);
+		free(log);
+		return NULL;
+	}
+	
+	return log;
+}
+
+/* Retrieves log singleton instance. */
+log_t* log_get_instance(){
+	static log_t* log = NULL;
+	// Check if there's log already
+	if(log)
+		return log;
+	// If not, create log
+	log = log_open(LOG_ROUTE, false);
 	return log;
 }
 
 /* Closes the received log file and destroys the log itself.*/
-void log_close(log_t* log){
+void log_close(){
+	log_t* log = log_get_instance();
 	if(log && log->log_file)
 		fclose(log->log_file);
-	if(log)
+		
+	// lock_destroy(log->lock);	
+	if(log) {
+		lock_destroy(log->lock);
 		free(log);
+	}
 }
 
 /* Write string msg to the received log file, using the log
  * level specified for the writing. If successful, returns
  * the total of characters written. Otherwise, a negative
  * number is returned.*/
- // TODO: Add a lock for writing in the lock
-int log_write(log_t* log, log_level lvl, char* msg, ... ){
+int log_write(log_level lvl, char* msg, ... ){
+	log_t* log = log_get_instance();	
 	if(!(log && log->log_file)) return -1;
+	lock_acquire(log->lock);
 	fflush(log->log_file);
 	
 	char time_str[10];
@@ -69,9 +107,12 @@ int log_write(log_t* log, log_level lvl, char* msg, ... ){
 		vfprintf(log->log_file, msg, args);
 		va_end(args);
 		fflush(log->log_file);
+		lock_release(log->lock);
 		return 0;
 	}
 		
+	// TODO: Add colors maybe? \x1b[32m \x1b[37;1
+	// Strongly agree to it
 	char* str_lvl;
 	switch(lvl){
 		case INFO_L: 
@@ -83,11 +124,15 @@ int log_write(log_t* log, log_level lvl, char* msg, ... ){
 		case ERROR_L: 
 			str_lvl = "ERROR";
 			break;
+		case CRITICAL_L:
+			str_lvl = "CRITICAL";
+			break;
 		}
 			
 	fprintf(log->log_file, "[%s] [%s] ", time_str, str_lvl);
 	vfprintf(log->log_file, msg, args);
 	va_end(args);
 	fflush(log->log_file);
+	lock_release(log->lock);
 	return 0;
 }

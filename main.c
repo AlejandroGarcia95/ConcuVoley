@@ -3,155 +3,141 @@
 #include <stdbool.h>
 #include <string.h>
 #include <signal.h>
+#include <fcntl.h>
 #include <sys/types.h>
-#include <sys/ipc.h> 
+#include <sys/ipc.h>
+#include <sys/stat.h>
 #include <unistd.h>
+#include <errno.h>
 #include <assert.h>
 #include <sys/wait.h>
 #include <time.h>
+#include <errno.h>
 #include "confparser.h"
 #include "log.h"
 #include "player.h"
-#include "match.h"
+#include "court.h"
 #include "namegen.h"
+#include "partners_table.h"
+#include "protocol.h"
+#include "semaphore.h"
 
-#define LOG_ROUTE "ElLog.txt"
-
-/* Handler function for a player process.
- * It should only be used with SIG_SET
- * signal. Makes the player stop playing 
- * the set if they were playing.*/
-void handler_players_set(int signum) {
-	assert(signum == SIG_SET);
-	// Check if set is to start or finish
-	if(player_is_playing()) 
-		player_stop_playing();
-}
-
-/* Function that makes the process adopt
- * a player's role. Basically, it creates
- * a player, and make them play a match.
- * Every set of the match starts when the
- * main process sends a "start playing" 
- * message through the pipe, and ends when
- * the player receives a SIG_SET signal 
- * (as a set could end unexpectedly). At
- * the end of each set, the player must
- * send through the pipe their score.*/
-void do_in_player(int pipes[2], log_t* log){
-	// Re-srand with a changed seed
-	srand(time(NULL) ^ (getpid() << 16));
-	char p_name[NAME_MAX_LENGTH];
-	generate_random_name(p_name);
+/* Returns negative in case of error!*/
+int main_init(){
+	srand(time(NULL));
+	// Spawn log
+	if(log_write(NONE_L, "Main: Simulation started!\n") < 0){
+		printf("FATAL: No log could be opened!\n");
+		return -1;
+	}
+	log_write(INFO_L, "Main: Self pid is %d\n", getpid());
 	
-	player_t* player = player_get_instance();
-	if(!player){
-		close(pipes[PIPE_WRITE]);
-		close(pipes[PIPE_READ]);
-		return;
+	// We want processes to ignore SIG_SET signal unless
+	// we set it explicitily
+	signal(SIG_SET, SIG_IGN);
+	
+	// Create every player FIFO
+	int i;
+	for(i = 0; i < TOTAL_PLAYERS; i++){
+		char player_fifo_name[MAX_FIFO_NAME_LEN];
+		get_player_fifo_name(i, player_fifo_name);
+		// Create the fifo for the player.
+		if(!create_fifo(player_fifo_name)) {
+			log_write(ERROR_L, "Main: FIFO creation error for player %03d [errno: %d]\n", i, errno);
+			return -1;
 		}
-	player_set_name(p_name);
+	}
 	
-	log_write(log, INFO_L, "Created new player: %s\n", p_name);
-	log_write(log, INFO_L, "%s skill is: %d\n", p_name, player_get_skill());
+	// Create every court FIFO
+	for(i = 0; i < TOTAL_COURTS; i++){
+		char court_fifo_name[MAX_FIFO_NAME_LEN];
+		get_court_fifo_name(i, court_fifo_name);
+		// Creating fifo for court
+		if(!create_fifo(court_fifo_name)) {
+			log_write(ERROR_L, "Main: FIFO creation error for court %03d [errno: %d]\n", i, errno);
+			return -1;
+	}
+	}
 	
-	// Set the hanlder for the SIG_SET signal
-	struct sigaction sa;
-	sigset_t sigset;	
-	sigemptyset(&sa.sa_mask);
-	sa.sa_flags = 0;
-	sa.sa_handler = handler_players_set;
-	sigaction(SIG_SET, &sa, NULL);
-	
-	// Here the player is on "waiting for playing"
-	// status. Will go on when the main process
-	// sends him a message for doing so.
-	char msg = 1;
-	while(msg == 1){
-		int msg_bytes = read(pipes[PIPE_READ], &msg, sizeof(char));
-		
-		if(msg_bytes < 0){
-			log_write(log, ERROR_L, "Player %s: bad read\n", p_name);
-			close(pipes[PIPE_WRITE]);
-			close(pipes[PIPE_READ]);
-			return;
-			}
-
-		// msg = 1 for now is the "start playing" message
-		if(msg == 1){
-			unsigned long int set_score = 0;
-			// Play the set until it's done (by SIG_SET)
-			log_write(log, INFO_L, "Player %s started playing\n", p_name);
-			player_start_playing();
-			player_play_set(&set_score);
-			// When set is finished, we use the pipe to
-			// send main process our set_score
-			write(pipes[PIPE_WRITE], &set_score, sizeof(set_score));
-			log_write(log, INFO_L, "Player %s stopped playing\n", p_name);
-			}
-		else
-			log_write(log, INFO_L, "Player %s: wont start playing\n", p_name);
+	// Start semaphores for courts. Every court is responsible for destroying own semaphores
+	unsigned int cid = 0;
+	// for every court cid in (1, court_max) do:
+		char court_fifo_name[MAX_FIFO_NAME_LEN];
+		get_court_fifo_name(cid, court_fifo_name);
+		int sem = sem_get(court_fifo_name, 1);
+		if (sem < 0) {
+			log_write(ERROR_L, "Main: Error creating semaphore [errno: %d]\n", errno);
+			return -1;
 		}
-	 
-	close(pipes[PIPE_WRITE]);
-	close(pipes[PIPE_READ]);
-	player_destroy(player);
-	// Beware! Returns to main!
+
+		log_write(INFO_L, "Main: Got semaphore %d with name %s\n", sem, court_fifo_name);
+		if (sem_init(sem, 0, 0) < 0) {
+			log_write(ERROR_L, "Main: Error initializing the semaphore [errno: %d]\n", errno);
+			return -1;
+		}
 }
 
 /* Launches a new process which will assume a
- * player's role. Each player is given a sort
- * of bidirectional pipe for comunicating with
- * the main process. After launching the new 
+ * player's role. Each player is given an id, from which
+ * the fifo of the player can be obtained. After launching the new 
  * player process, this function must call the
- * do_in_player function to allow it to play 
- * against other in a match. Note the main
- * process can comunicate with a bidirectional
- * pipe of his own.*/
-int launch_player(int pipes[2], log_t* log){
-	static int this_player_id = 0; // useless by the time being, but helpful in the future
+ * player_main function to allow it to play 
+ * against other in a court. */
+int launch_player(unsigned int player_id) {
+	
+	log_write(INFO_L, "Main: Launching player %03d!\n", player_id);
 
-    // Create pipes between player and main process
-    int fd_main_to_player[2], fd_player_to_main[2];
-    if(pipe(fd_main_to_player) < 0){
-		log_write(log, ERROR_L, "Pipe creation failed!\n");
-		return -1;
-		}
-    
-    if(pipe(fd_player_to_main) < 0){
-		log_write(log, ERROR_L, "Pipe creation failed!\n");
-		close(fd_main_to_player[PIPE_WRITE]);
-		close(fd_main_to_player[PIPE_READ]);
-		return -1;
-		}
 	// New process, new player!
 	pid_t pid = fork();
-	
-	if(pid < 0){ // Error
-		close(fd_player_to_main[PIPE_WRITE]);
-		close(fd_player_to_main[PIPE_READ]);
-		close(fd_main_to_player[PIPE_WRITE]);
-		close(fd_main_to_player[PIPE_READ]);
+
+	if (pid < 0) { // Error
+		log_write(ERROR_L, "Main: Fork failed!\n");
 		return -1;
-		}
-	else if(pid == 0){ // Son aka player
-		close(fd_main_to_player[PIPE_WRITE]);
-		close(fd_player_to_main[PIPE_READ]);
-		int player_pipes[2];
-		player_pipes[PIPE_WRITE] = fd_player_to_main[PIPE_WRITE];
-		player_pipes[PIPE_READ] = fd_main_to_player[PIPE_READ];
-		do_in_player(player_pipes, log);
-		}
-	else { // Father aka main process
-		close(fd_main_to_player[PIPE_READ]);
-		close(fd_player_to_main[PIPE_WRITE]);
-		pipes[PIPE_WRITE] = fd_main_to_player[PIPE_WRITE];
-		pipes[PIPE_READ] = fd_player_to_main[PIPE_READ];
-		this_player_id++;
-		}
-		return 0;
+	} else if (pid == 0) { // Son aka player
+		player_main(player_id);
+		assert(false);	// Should not return!
+	} 
+	return 0;
 }
 
+
+
+// TODO: make so it is not necesary to pass pointer to partners table
+int launch_court(unsigned int court_id, partners_table_t* pt) {
+	log_write(INFO_L, "Main: Launching court %03d!\n", court_id);
+
+	// New process, new court!
+	pid_t pid = fork();
+
+	if (pid < 0) { // Error
+		log_write(ERROR_L, "Main: Fork failed!\n");
+		return -1;
+	} else if (pid == 0) { // Son aka court
+		court_main(court_id, pt);
+		assert(false); // Should not return!
+	}
+	return 0;
+
+}
+
+
+/*
+
+int launch_referee(partners_table_t* pt) {
+	log_write(INFO_L, "Main: Launching referee!\n");
+
+	pid_t pid = fork();
+
+	if (pid < 0) {
+		log_write(ERROR_L, "Main: Fork failed!\n");
+		return -1;
+	} else if (pid == 0) {
+		referee_main(pt);
+		assert(false); // Should not return!
+	}
+	return 0;
+}
+*/
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
  * 
  * 		MAIN DOWN HERE
@@ -160,51 +146,65 @@ int launch_player(int pipes[2], log_t* log){
 
 
 int main(int argc, char **argv){
-	struct timeval time_start;
-	gettimeofday (&time_start, NULL);
-	srand(time(NULL));
-	
-	log_t* log = log_open(LOG_ROUTE, false, time_start);
-	if(!log){
-		printf("FATAL: No log could be opened!\n");
-		return -1;
-		}
-	log_write(log, NONE_L, "Let the tournament begin!\n");
 	// "Remember who you are and where you come from; 
 	// otherwise, you don't know where you are going."
 	pid_t main_pid = getpid();
+	
+	if(main_init() < 0) {
+		printf("FATAL: Something went really wrong!\n");
+		return -1;
+	}
+		
+
+	log_write(NONE_L, "Main: Let the tournament begin!\n");
 
 	// Let's launch player processes and make them play, yay!
-	int pipes[PLAYERS_PER_MATCH][2] = {};
-	
-	// We want main process to ignore SIG_SET signal as
-	// it's just for players processes
-	signal(SIG_SET, SIG_IGN);
-	
-	int i, j;
+	int i;
+
 	// Launch players processes
-	for(i = 0; i < PLAYERS_PER_MATCH; i++){
-		if(getpid() == main_pid)
-			launch_player(&pipes[i][0], log);	
-		}
-			
-	// The children/player processes reach here
-	// once they're done playing the matches.
-	// Then, if we're a player, we should die here
+	for(i = 0; i < TOTAL_PLAYERS; i++){
+		launch_player(i);
+	}
+	
+	// Create table of partners
+	partners_table_t* pt = partners_table_create(TOTAL_PLAYERS);
+	if(!pt) {
+		log_write(ERROR_L, "Main: Error creating partners table [errno: %d]\n", errno);
+	}
+
+	// Launch court processes
+	for (i = 0; i < TOTAL_COURTS; i++) {
+		launch_court(i, pt);
+	}
+	
+	// We create a referee to administrate the tournament!
+	// launch_referee(pt);
+
+	// No child proccess should end here
+	// ALL childs must finish with a exit(status) call.
+	// The only cleaning to be done by them is log_close(log)
 	if(getpid() != main_pid){
-		log_close(log);
-		// IMPORTANT NOTE: the use of 'return 0' is only for
-		// properly testing the children with valgrind. Should
-		// be changed by an exit() later.
-		return 0;
-		}
-	
-	match_t* match = match_create(pipes, true);
-	
-	match_play(match, log);
-	
-	match_destroy(match);		
-	log_close(log);
+		assert(false);
+		//log_write(INFO_L, "Proccess pid %d about to finish correctly \n", getpid());
+		//court_destroy(court);
+		//partners_table_destroy(pt);	
+		//log_close(log);
+		//return 0;
+	}
+
+
+	// Important note: Here main process is not waiting for referee!
+	for (i = 0; i < (TOTAL_PLAYERS + TOTAL_COURTS); i++) {
+		int status;
+		int pid = wait(&status);
+		int ret = WEXITSTATUS(status);
+		log_write(INFO_L, "Main: Proccess pid %d finished with exit status %d\n", pid, ret);
+	}
+
+	partners_table_free_table(pt);		
+
+	log_write(INFO_L, "Main: Tournament ended correctly \\o/\n");
+	log_close();
 	return 0;
 }
 

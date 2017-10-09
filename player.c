@@ -3,7 +3,18 @@
 #include <stdbool.h>
 #include <string.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <signal.h>
+#include <assert.h>
+#include <sys/types.h>
+#include <unistd.h>
+
+#include <errno.h>
 #include "player.h"
+#include "court.h"
+
+#include "protocol.h"
+#include "semaphore.h"
 
 // In microseconds!
 #define MIN_SCORE_TIME 15000
@@ -55,7 +66,19 @@ player_t* player_create(){
 	player->skill = generate_random_skill();
 	player->matches_played = 0;
 	player->currently_playing = false;
+	player->id = 0;
 	return player;
+}
+
+/* Auxiliar function to replace all exit(-1) calls,
+ * offering the possibility of releasing resources.*/
+void player_seppuku(bool release_res){
+	if(release_res){
+		player_t* player =  player_get_instance();
+		player_destroy(player);
+		log_close();
+	}
+	exit(-1);
 }
 
 // ----------------------------------------------------------------
@@ -92,24 +115,10 @@ size_t player_get_skill(){
 	return (player ? player->skill : SKILL_MAX+8);
 }
 
-/* Returns the amount of matches played by the 
- * current player. */
-size_t player_get_matches(){
-	player_t* player = player_get_instance();
-	return (player ? player->matches_played : 0);
-}
-
 /* Returns the name of the current player.*/
 char* player_get_name(){
 	player_t* player = player_get_instance();
 	return (player ? player->name : NULL);
-}
-
-/*Increase by 1 the amount of matches played.*/
-void player_increase_matches_played(){
-	player_t* player = player_get_instance();
-	if(player)
-		player->matches_played++;
 }
 
 /* Returns true or false if the player
@@ -133,6 +142,39 @@ void player_start_playing(){
 		player->currently_playing = true;
 }
 
+/* Handler function for a player process.
+ * It should only be used with SIG_SET
+ * signal. Makes the player stop playing 
+ * the set if they were playing.*/
+void handler_players_set(int signum) {
+	assert(signum == SIG_SET);
+	// Check if set is to start or finish
+	if(player_is_playing()) 
+		player_stop_playing();
+}
+
+void player_set_sigset_handler() {
+	// Set the hanlder for the SIG_SET signal
+	struct sigaction sa;
+	sigset_t sigset;	
+	sigemptyset(&sa.sa_mask);
+	sa.sa_flags = 0;
+	sa.sa_handler = handler_players_set;
+	sigaction(SIG_SET, &sa, NULL);
+}
+
+void player_unset_sigset_handler() {
+	signal(SIG_SET, SIG_IGN);
+	return;
+/*	struct sigaction sa;
+	sigset_t sigset;	
+	sigemptyset(&sa.sa_mask);
+	sa.sa_flags = 0;
+	sa.sa_handler = NULL;
+	sigaction(SIG_SET, &sa, NULL);*/
+}
+
+
 /* Make this player play the current set
  * storing their score in the set_score
  * variable. This function should do the
@@ -144,9 +186,216 @@ void player_start_playing(){
 void player_play_set(unsigned long int* set_score){
 	player_t* player = player_get_instance();
 	if(!player) return;
-	
+
 	while(player_is_playing()){
 		emulate_score_time();
 		(*set_score)++;
-		}
+	}
 }
+
+
+
+// TODO: documentation
+void player_at_court(player_t* player, int court_fifo, int player_fifo) {
+	message_t msg = {};
+	char* p_name = player->name;
+	while(msg.m_type != MSG_MATCH_END){
+		// REMOVE ME
+		int miss_count = 0;
+
+		if(!receive_msg(player_fifo, &msg)) {
+			log_write(ERROR_L, "Player %03d: Bad read [errno: %d]\n", player->id, errno);
+			close(court_fifo);
+			close(player_fifo);
+			player_seppuku(true);
+		}
+
+		if(msg.m_type == MSG_SET_START) {
+			unsigned long int set_score = 0;
+			msg.m_type = MSG_PLAYER_SCORE;
+			msg.m_player_id = player->id;
+	
+			// Play the set until it's done (by SIG_SET)
+			log_write(INFO_L, "Player %03d: Started playing\n", player->id);
+			player_start_playing();
+			player_play_set(&set_score);
+			msg.m_score = set_score;
+			// When set is finished, we use the fifo to
+			// send main process our set_score
+			if(!send_msg(court_fifo, &msg))
+				log_write(ERROR_L, "Player %03d: Cannot write in court [errno: %d]\n", player->id, errno);
+			log_write(INFO_L, "Player %03d: Finished set (scored %lu)\n", player->id, set_score);
+		} else if(msg.m_type == MSG_MATCH_REJECT){
+			// If here, player was accepted and was on the court a while
+			// but other players that arrived couldn't make a team with them.
+			// Hence, court kicked every player there
+			log_write(INFO_L, "Player %03d: Kicked from previously accepted court\n", player->id);
+			return;
+		} else {
+			log_write(INFO_L, "Player %03d: wont start playing\n", player->id);
+			miss_count++;
+			if (miss_count >= 100) {
+				// Have to really praise you for this
+				log_write(CRITICAL_L, "Player %03d: Have to shut down; wont start playing too many times (maybe deadlock)\n", player->id);
+				player_seppuku(true);
+			}
+		}
+	}
+	
+	if(msg.m_type == MSG_MATCH_END) // Not needed for now, but good sanity check
+		player->matches_played++;
+}
+
+// TODO: documentation xd
+void player_join_court(player_t* player, unsigned int court_id) {
+	log_write(INFO_L, "Player %03d: Found court %03d, attempting to join\n", player->id, court_id);
+	char court_fifo_name[MAX_FIFO_NAME_LEN];
+	get_court_fifo_name(court_id, court_fifo_name);
+
+	// Get the court key!!
+	// TODO: change it so it grabs the key to the court it wanna join
+	int sem = sem_get(court_fifo_name, 1);
+	if (sem < 0)
+		log_write(ERROR_L, "Player %03d: Error opening the semaphore [errno: %d]\n", player->id, errno);
+
+	log_write(INFO_L, "Player %03d: Trying to wait on semaphore %d with name %s\n", player->id, sem, court_fifo_name);
+	if (sem_wait(sem, 0) < 0)
+		log_write(ERROR_L, "Player %03d: Error taking semaphore [errno: %d]\n", player->id, errno);
+
+	player_set_sigset_handler();
+	log_write(INFO_L, "Player %03d: Took semaphore %d\n", player->id, sem);
+
+	// Joining lobby!!
+	char* p_name;
+	p_name = player->name;
+	// Open court fifo
+	int court_fifo = open(court_fifo_name, O_WRONLY);
+	if (court_fifo < 0) {
+		log_write(ERROR_L, "Player %03d: FIFO opening error for court %03d [errno: %d]\n", player->id, court_id, errno);
+		player_seppuku(true);
+	}
+	log_write(INFO_L, "Player %03d: Opened court %03d FIFO\n", player->id, court_id);
+
+	// Send "I want to play" message
+	message_t msg = {};
+	msg.m_type = MSG_PLAYER_JOIN_REQ;
+	msg.m_player_id = player->id;
+	if(!send_msg(court_fifo, &msg)){
+		log_write(ERROR_L, "Player %03d: Failed to write to court %03d [errno: %d]\n", player->id, court_id, errno);
+		close(court_fifo);
+		player_seppuku(true);
+	}
+
+	// Open self fifo (to rcv joined msg)
+	char my_fifo_name[MAX_FIFO_NAME_LEN];
+	if(!get_player_fifo_name(player->id, my_fifo_name)) {
+		log_write(ERROR_L, "Player %03d: FIFO player opening error [errno: %d]\n", player->id, errno);
+		player_seppuku(true);
+	}
+	int my_fifo = open(my_fifo_name, O_RDONLY);
+	if (my_fifo < 0) {
+		log_write(ERROR_L, "Player %03d: FIFO opening error for player [errno: %d]\n", player->id, errno);
+		player_seppuku(true);
+	}
+	log_write(INFO_L, "Player %03d: Opened self FIFO\n", player->id);
+
+	// If accepted join court
+	if(!receive_msg(my_fifo, &msg)) {
+		log_write(ERROR_L, "Player %03d: Error reading accepted/rejected msg [errno: %d]\n", player->id, errno);
+		player_seppuku(true);
+	}
+	// Received a msg!!
+	assert((msg.m_type == MSG_MATCH_ACCEPT) || (msg.m_type == MSG_MATCH_REJECT));
+	if (msg.m_type == MSG_MATCH_ACCEPT) {
+		player_at_court(player, court_fifo, my_fifo);
+	} else {
+		log_write(ERROR_L, "Player %03d: Player was rejected\n", player->id);
+	}
+	player_unset_sigset_handler();
+
+	if (close(court_fifo) < 0)
+		log_write(ERROR_L, "Player %03d: Close court_fifo error [errno: %d]\n", player->id, errno);
+	if (close(my_fifo) < 0)
+		log_write(ERROR_L, "Player %03d: Close self_fifo error [errno: %d]\n", player->id, errno);
+
+
+	// Release semaphore
+	if (sem_post(sem, 0) < 0)
+		log_write(ERROR_L, "Player %03d: Error taking semaphore [errno: %d]\n", player->id, errno);
+	log_write(INFO_L, "Player %03d: Released semaphore\n", player->id);
+
+}
+
+
+
+/*
+ * The player who calls this function is willing to join a court. It will connect with
+ * main controller and send a "Gimme a place to play" message.
+ *
+ * It will sleep until it receives a response from main controller via it's own semaphore fifo.
+ * Two things can happen then:
+ *	- the message is of type MSG_FREE_COURT, and msg.m_court_id 
+ *	  tells which court the player can join.
+ *	- the message is of type MSG_TOURNAMENT_END, indicating no 
+ *	  more matches will be played, and player should leave.
+ */
+void player_looking_for_court(player_t* player) {
+	log_write(INFO_L, "Player %03d: Looking for a court\n", player->id);
+
+	unsigned int court_id = 0;
+	
+	player_join_court(player, court_id);
+}
+
+
+
+/* Function that makes the process adopt
+ * a player's role. Basically, it creates
+ * a player, and make them play a court.
+ * Every set of the court starts when the
+ * main process sends a "start playing" 
+ * message through the fifo, and ends when
+ * the player receives a SIG_SET signal 
+ * (as a set could end unexpectedly). At
+ * the end of each set, the player must
+ * send through the fifo their score.*/
+void player_main(unsigned int id) {
+	// Re-srand with a changed seed
+	srand(time(NULL) ^ (getpid() << 16));
+	char p_name[NAME_MAX_LENGTH];
+	generate_random_name(p_name);
+	
+	player_t* player = player_get_instance();
+	if(!player)
+		player_seppuku(false);
+
+	player->id = id;
+	player_set_name(p_name);
+	
+	log_write(INFO_L, "Player %03d: Launched as %s using PID: %d\n", player->id, p_name, getpid());
+	log_write(INFO_L, "Player %03d: Player skill is: %d\n", player->id, player_get_skill());
+	
+
+	// TODO: here player should decide whether to get into the stadium,
+	// leave if its already inside or look for a free court if it
+	// wants to play.
+	int i, r;
+	while(player->matches_played < NUM_MATCHES) {
+		player_looking_for_court(player);
+		
+		// Wait some time before joining again
+		// TODO: Change for wait/broadcast or similar
+		unsigned long int t_rand = rand() % 2000000;
+		usleep(t_rand);
+	}
+	
+
+	log_write(INFO_L, "Player %03d: Now leaving\n", player->id);
+	player_destroy(player);
+	log_close();
+	exit(0);
+	return; 
+	// Beware! Returns to main!
+}
+
+
