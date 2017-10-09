@@ -21,7 +21,6 @@
 #include "partners_table.h"
 #include "protocol.h"
 #include "semaphore.h"
-#include "referee.h"
 
 /* Returns negative in case of error!*/
 int main_init(){
@@ -122,7 +121,7 @@ int launch_court(unsigned int court_id, partners_table_t* pt) {
 }
 
 
-
+/*
 
 int launch_referee(partners_table_t* pt) {
 	log_write(INFO_L, "Main: Launching referee!\n");
@@ -138,7 +137,7 @@ int launch_referee(partners_table_t* pt) {
 	}
 	return 0;
 }
-
+*/
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
  * 
  * 		MAIN DOWN HERE

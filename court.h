@@ -16,21 +16,14 @@
 #define SETS_AMOUNT 5
 #define SETS_WINNING 3
 
-// Deprecated, not in use now
-//#define PIPE_READ 0
-//#define PIPE_WRITE 1
-
-
-#define MATCH_TO_PLAYER(mid) (court->player_connected[mid])
-#define PLAYER_TO_MATCH(pid) (court->player_number[pid])
-
 
 #define SIG_SET SIGUSR1
 
-/* NEW: structure for modelling each team playing on the court. */
+/* Structure for modelling each team playing on the court. */
 typedef struct court_team_ {
 	unsigned int team_players[PLAYERS_PER_TEAM];
 	size_t team_size;
+	uint8_t sets_won;
 } court_team_t;
 
 /* court structure used to model a court of
@@ -46,21 +39,14 @@ typedef struct court_ {
 	int court_fifo;
 	char court_fifo_name[MAX_FIFO_NAME_LEN];
 	bool close_pipes; 
-	// Prop: send this scores to the court_team_t structure
-	uint8_t sets_won_home;
-	uint8_t sets_won_away;
 
-	// Temporary!!
-	// TODO: Replace it by the new court_team_t
-	// court_team_t team_home; // team 0
-	// court_team_t team_away; // team 1
+	court_team_t team_home; // team 0
+	court_team_t team_away; // team 1
 	uint8_t connected_players;
 	partners_table_t* pt;
 
+	// Remove this later
 	uint8_t player_points[TOTAL_PLAYERS];
-	uint8_t player_number[TOTAL_PLAYERS];
-	unsigned int player_connected[PLAYERS_PER_MATCH];
-	unsigned int player_team[PLAYERS_PER_MATCH];
 } court_t;
 
 // --------------- Court team section --------------
@@ -74,6 +60,9 @@ bool court_team_is_full(court_team_t team);
 
 /* Returns true if the received player can join the team.*/
 bool court_team_player_can_join_team(court_team_t team, unsigned int player_id, partners_table_t* pt);
+
+/* Returns true if the received player is already on the team*/
+bool court_team_player_in_team(court_team_t team, unsigned int player_id);
 
 /* Joins the received player to the team.*/
 void court_team_join_player(court_team_t* team, unsigned int player_id);
@@ -116,6 +105,18 @@ void court_lobby(court_t* court);
 /* Finish the current set by signaling
  * the players with SIG_SET.*/
 void court_finish_set(court_t* court);
+
+/* Returns a number between 0 and PLAYERS_PER_MATCH -1 which 
+ * represents the "player_court_id", a player id that is 
+ * "relative" to this court. If the player_id received doesn't
+ * belong to a player on this court, returns something above
+ * PLAYERS_PER_MATCH.*/
+unsigned int court_player_to_court_id(court_t* court, unsigned int player_id);
+
+/* Inverse of the function above. Receives a "player_court_id"
+ * relative to this court and returns the player_id. Returns
+ * something above TOTAL_PLAYERS in case of error.*/
+unsigned int court_court_id_to_player(court_t* court, unsigned int pc_id);
 
 /* Returns the sets won by home and away 
  * playes. If court is NULL, let them both 

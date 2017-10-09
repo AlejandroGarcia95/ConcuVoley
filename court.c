@@ -19,16 +19,16 @@
 #define SET_MAX_DURATION 4000000 
 #define SET_MIN_DURATION 1000000 
 
-#define OTHER_TEAM(x) ((x + 1) % 2)
 
 // --------------- Court team section --------------
 
 /* Initializes received team as empty team.*/
 void court_team_initialize(court_team_t* team){
 	team->team_size = 0;
+	team->sets_won = 0;
 	int i;
 	for (i = 0; i < PLAYERS_PER_TEAM; i++)
-		team->team_players[i] = 0;
+		team->team_players[i] = TOTAL_PLAYERS + 8;
 }
 
 /* Returns true if team is full (no other member can
@@ -43,9 +43,18 @@ bool court_team_player_can_join_team(court_team_t team, unsigned int player_id, 
 	// If playerd_id has already played with any team member, returns false
 	int i;
 	for (i = 0; i < team.team_size; i++)
-		if(get_played_together(pt, i, player_id))
+		if(get_played_together(pt, team.team_players[i], player_id))
 			return false;
 	return true;
+}
+
+/* Returns true if the received player is already on the team*/
+bool court_team_player_in_team(court_team_t team, unsigned int player_id){
+	int i;
+	for (i = 0; i < team.team_size; i++)
+		if(player_id == team.team_players[i])
+			return true;
+	return false;
 }
 
 /* Joins the received player to the team.*/
@@ -61,16 +70,50 @@ void court_team_kick_players(court_team_t* team){
 
 // --------------- Auxiliar functions ---------------
 
+/* Returns a number between 0 and PLAYERS_PER_MATCH -1 which 
+ * represents the "player_court_id", a player id that is 
+ * "relative" to this court. If the player_id received doesn't
+ * belong to a player on this court, returns something above
+ * PLAYERS_PER_MATCH.*/
+unsigned int court_player_to_court_id(court_t* court, unsigned int player_id){
+	int i;
+	court_team_t team0 = court->team_home;
+	for(i = 0; i < PLAYERS_PER_TEAM; i++)
+		if(team0.team_players[i] == player_id)
+			return i;
+	court_team_t team1 = court->team_away;
+	for(i = 0; i < PLAYERS_PER_TEAM; i++)
+		if(team1.team_players[i] == player_id)
+			return i + PLAYERS_PER_TEAM;
+			
+	return PLAYERS_PER_MATCH + 8;
+}
+
+/* Inverse of the function above. Receives a "player_court_id"
+ * relative to this court and returns the player_id. Returns
+ * something above TOTAL_PLAYERS in case of error.*/
+unsigned int court_court_id_to_player(court_t* court, unsigned int pc_id){
+	if(pc_id > PLAYERS_PER_MATCH) return TOTAL_PLAYERS + 8;
+	court_team_t team = court->team_home;
+	if(pc_id >=  PLAYERS_PER_TEAM) {
+		pc_id -= PLAYERS_PER_TEAM;
+		team = court->team_away;
+	}
+	return team.team_players[pc_id];
+}
+
 void connect_player_in_team(court_t* court, unsigned int p_id, unsigned int team){
-	unsigned int match_id = court->connected_players;
-	court->player_connected[match_id] = p_id;
-	court->player_team[match_id] = team;
-	court->player_number[p_id] = match_id;
+	if(team == 0)
+		court_team_join_player(&court->team_home, p_id);
+	if(team == 1)
+		court_team_join_player(&court->team_away, p_id);
+	
 	log_write(INFO_L, "Court %03d: Player %03d is connected at this court for team %d\n", court->court_id, p_id, team + 1);
 
 	message_t msg = {};
 	msg.m_player_id = p_id;
 	msg.m_type = MSG_MATCH_ACCEPT;
+	int match_id = court->connected_players;
 	if (!send_msg(court->player_fifos[match_id], &msg)) {
 		log_write(ERROR_L, "Court %03d: Failed to send accept msg to player %03d [errno: %d]\n", court->court_id, p_id, errno);
 		exit(-1);	// TODO: don't bail, just revert changes
@@ -80,6 +123,7 @@ void connect_player_in_team(court_t* court, unsigned int p_id, unsigned int team
 }
 
 void reject_player(court_t* court, unsigned int p_id) {
+	log_write(CRITICAL_L, "Court %03d: Player %03d couldn't find a team, we should kick him!!\n", court->court_id, p_id);
 	message_t msg = {};
 	msg.m_player_id = p_id;
 	msg.m_type = MSG_MATCH_REJECT;
@@ -87,22 +131,27 @@ void reject_player(court_t* court, unsigned int p_id) {
 		log_write(ERROR_L, "Court %03d: Failed to send accept msg to player %03d [errno: %d]\n", court->court_id, p_id, errno);
 		exit(-1);	// TODO: don't bail, just revert changes
 	}
-
+	close(court->player_fifos[court->connected_players]);
 }
 
 /* Marks each player's partner on the partners_table
  * stored at court.*/
-// TODO: Rewrite this using the court_team_t
 void mark_players_partners(court_t* court){
 	if((!court) || (!court->pt)) return;
-	// Mark each players' partner
+	// Mark each players' partner (home)
 	int i, j;
-	for(i = 0; i < PLAYERS_PER_MATCH; i++)
-		for(j = i + 1; j < PLAYERS_PER_MATCH; j++) {
-			unsigned int p1 = MATCH_TO_PLAYER(i);
-			unsigned int p2 = MATCH_TO_PLAYER(j);
-			if(court->player_team[i] == court->player_team[j])
-				set_played_together(court->pt, p1, p2);
+	for(i = 0; i < PLAYERS_PER_TEAM; i++)
+		for(j = i + 1; j < PLAYERS_PER_TEAM; j++) {
+			unsigned int p1 = court->team_home.team_players[i];
+			unsigned int p2 = court->team_home.team_players[j];
+			set_played_together(court->pt, p1, p2);
+			}
+	// Mark each players' partner (away)
+	for(i = 0; i < PLAYERS_PER_TEAM; i++)
+		for(j = i + 1; j < PLAYERS_PER_TEAM; j++) {
+			unsigned int p1 = court->team_away.team_players[i];
+			unsigned int p2 = court->team_away.team_players[j];
+			set_played_together(court->pt, p1, p2);
 			}
 }
 
@@ -111,72 +160,47 @@ void mark_players_partners(court_t* court){
  * the player can join the match, this functions accepts them and
  * assign them a team. If the player can't, this function should
  * kick them off!*/
- // TODO: Rewrite this using the court_team_t
 void handle_player_team(court_t* court, message_t msg){
-	static int team_members[2] = {0};
-	int p_act;
-	bool joined;
+	static int join_attempts = 0;
 	switch(court->connected_players){
-		case 0: // First player to connect. Instantly accepted
+		case 0: // First player to connect. Instantly accepted on team 0
 			connect_player_in_team(court, msg.m_player_id, 0);
-			team_members[0]++;
 			break;
 		case 1: // Second player to connect.
 			// If can team up with first player, let them do it
-			if(!get_played_together(court->pt, court->player_connected[0], msg.m_player_id)){
+			if(court_team_player_can_join_team(court->team_home ,msg.m_player_id, court->pt))
 				connect_player_in_team(court, msg.m_player_id, 0);
-				team_members[0]++;
-			} else { // If not, go to other team
+			else // If not, go to other team
 				connect_player_in_team(court, msg.m_player_id, 1);
-				team_members[1]++;
-			}
 			break;
-		case 2: 
-		case 3: // TODO: Find out another way of doing this, considering kicking off the player
-
-			joined = false; // Debug only
-			for(p_act = 0; p_act < court->connected_players; p_act++){
-				unsigned int p_act_id = MATCH_TO_PLAYER(p_act);
-				unsigned int p_act_team = court->player_team[p_act];
-
-				if(!get_played_together(court->pt, msg.m_player_id, p_act_id)){
-					if(team_members[p_act_team] < 2) {
-						connect_player_in_team(court, msg.m_player_id, p_act_team);
-						team_members[p_act_team]++;
-						joined = true;
-						break;
-					}
-					else if(team_members[OTHER_TEAM(p_act_team)] < 2) {
-						connect_player_in_team(court, msg.m_player_id, OTHER_TEAM(p_act_team));
-						team_members[OTHER_TEAM(p_act_team)]++;
-						joined = true;
-						break;
-					}
-					else {
-						// Should not happen
-						log_write(CRITICAL_L, "Court %03d: Player %03d tried to join a full match\n", court->court_id, msg.m_player_id);
-						return;
-					}
-				}
-			}
-			if (!joined) {
-				log_write(CRITICAL_L, "Court %03d: Player %03d couldn't find a team, we should kick him!!\n", court->court_id, msg.m_player_id);
-				reject_player(court, msg.m_player_id);
-				close(court->player_fifos[court->connected_players]);
-			}
-			break;
-			
 		default:
-			log_write(CRITICAL_L, "Court %03d: Wrong value for court->connected_players: %d\n", court->court_id, court->connected_players);
-			break; // Should not happen
-	}
-	
-				
-	if(court->connected_players == PLAYERS_PER_MATCH) {
-		team_members[0] = 0;
-		team_members[1] = 0;
-	}
-
+			if(court->connected_players >= PLAYERS_PER_MATCH){
+				// Should not happen
+				log_write(CRITICAL_L, "Court %03d: Wrong value for court->connected_players: %d\n", court->court_id, court->connected_players);
+				break; 
+				}
+			
+			if(court_team_is_full(court->team_home)) {
+				// Check if can join team1
+				if(court_team_player_can_join_team(court->team_away ,msg.m_player_id, court->pt))
+					connect_player_in_team(court, msg.m_player_id, 1);
+				else // kick player
+					reject_player(court, msg.m_player_id);
+			}
+			else {
+				// Check if can join team0
+				if(court_team_player_can_join_team(court->team_home ,msg.m_player_id, court->pt))
+					connect_player_in_team(court, msg.m_player_id, 0);
+				else // kick player
+					reject_player(court, msg.m_player_id);
+			}
+		}
+		
+	join_attempts++;
+	if(join_attempts == 3) { // Or some other absurd limit
+		// Kick all players!
+		join_attempts = 0;
+		}
 }
 
 
@@ -217,8 +241,8 @@ court_t* court_create(unsigned int court_id, partners_table_t* pt) {
 		court->player_points[i] = 0;
 	}
 
-	court->sets_won_away = 0;
-	court->sets_won_home = 0;
+	court_team_initialize(&court->team_away);
+	court_team_initialize(&court->team_home);
 	court->pt = pt;
 	court->connected_players = 0;
 	return court;
@@ -240,9 +264,10 @@ void court_destroy(court_t* court){
  */
  // TODO: Refactor using new court_team_t
 void court_lobby(court_t* court) {
-
 	log_write(INFO_L, "Court %03d: A new match is about to begin... lobby\n", court->court_id, errno);
 	court->connected_players = 0;
+	court_team_initialize(&court->team_home);
+	court_team_initialize(&court->team_away);
 	message_t msg = {};
 
 	while (court->connected_players < PLAYERS_PER_MATCH) {
@@ -289,7 +314,7 @@ void court_lobby(court_t* court) {
 }
 
 
-/* Plays the court. Communication is done
+/* Plays the match. Communication is done
  * using the players' fifos, and sets are
  * played until one of the two teams wins
  * SETS_WINNING sets, or until SETS_AMOUNT
@@ -299,7 +324,7 @@ void court_lobby(court_t* court) {
  * criptors at the end of the court. */
 void court_play(court_t* court){
 	int i, j;
-	unsigned long int players_scores[PLAYERS_PER_MATCH] = {};
+	unsigned long int players_scores[PLAYERS_PER_MATCH] = {0};
 	message_t msg = {};
 
 	// Play SETS_AMOUNT sets
@@ -328,33 +353,37 @@ void court_play(court_t* court){
 			else {
 				log_write(INFO_L, "Court %03d: Received %d from player %03d\n", court->court_id, msg.m_type, msg.m_player_id);
 				assert(msg.m_type == MSG_PLAYER_SCORE);
-				players_scores[PLAYER_TO_MATCH(msg.m_player_id)] = msg.m_score;
+				int pc_id = court_player_to_court_id(court, msg.m_player_id);
+				players_scores[pc_id] = msg.m_score;
 			}
 		}
 		// Show this set score
-		for(i = 0; i < PLAYERS_PER_MATCH; i++)
-			log_write(NONE_L, "Court %03d: Player %03d set score: %ld\n", court->court_id, MATCH_TO_PLAYER(i), players_scores[i]);
-		
+		for(i = 0; i < PLAYERS_PER_MATCH; i++) {
+			int p_id = court_court_id_to_player(court, i);
+			log_write(NONE_L, "Court %03d: Player %03d set score: %ld\n", court->court_id, p_id, players_scores[i]);
+			}
 		// Determinate the winner of the set
 		// I know this is my own code, but it's ugly.
 		// Prop: Rewrite this using court_team_t with scores
 		unsigned long int score_home = 0, score_away = 0;
-		for (i = 0; i < PLAYERS_PER_MATCH; i++) {
-			if (court->player_team[i] == 0)
-				score_home += players_scores[i];
-			else
-				score_away += players_scores[i];
-		}
+		for (i = 0; i < PLAYERS_PER_TEAM; i++) 
+			score_home += players_scores[i];
+			
+		for (i = PLAYERS_PER_TEAM; i < PLAYERS_PER_MATCH; i++) 
+			score_away += players_scores[i];
+
+
+		log_write(INFO_L, "Court %03d: This set ended (team 1, team 2): %d - %d\n", court->court_id, score_home, score_away);
 
 		if (score_home > score_away)
-			court->sets_won_home++;
+			court->team_home.sets_won++;
 		else
-			court->sets_won_away++;
+			court->team_away.sets_won++;
 
 		// If any won SETS_WINNING sets than the other, court over
-		if(court->sets_won_home == SETS_WINNING)
+		if(court->team_home.sets_won == SETS_WINNING)
 			break;
-		if(court->sets_won_away == SETS_WINNING)
+		if(court->team_away.sets_won == SETS_WINNING)
 			break;	
 	}
 		
@@ -364,27 +393,24 @@ void court_play(court_t* court){
 		send_msg(court->player_fifos[i], &msg);
 	}
 
-	// Close pipes and show final results
-	// TODO: Refactor with new court_team_t
-/*	if(court->sets_won_home > court->sets_won_away) {
-		log_write(NONE_L, "Team 1 won!\n");
-		for (i = 0; i < PLAYERS_PER_MATCH; i++)
-			if (court->player_team[i] == 0)
-				court->player_points[i]++;
-	} else {
-		log_write(NONE_L, "Team 2 won!\n");	
-		for (i = 0; i < PLAYERS_PER_MATCH; i++)
-			if (court->player_team[i] == 1)
-				court->player_points[i]++;
-	}*/
+
 	
-	int won_team = (int) (court->sets_won_home < court->sets_won_away);  
+	int won_team = (int) (court->team_home.sets_won < court->team_away.sets_won);  
 	log_write(NONE_L, "Court %03d: Team %d won!\n", court->court_id, won_team + 1);
-	for (i = 0; i < PLAYERS_PER_MATCH; i++)
-		if (court->player_team[i] == won_team)
-			court->player_points[MATCH_TO_PLAYER(i)]++;
-			
+	if(won_team)
+		for(i = PLAYERS_PER_TEAM; i < PLAYERS_PER_MATCH; i++) {
+			int p_id = court_court_id_to_player(court, i);
+			court->player_points[p_id]++;
+		}
+	else
+		for(i = 0; i < PLAYERS_PER_TEAM; i++) {
+			int p_id = court_court_id_to_player(court, i);
+			court->player_points[p_id]++;
+		}
+		
 	mark_players_partners(court);
+//	court_team_kick_players(&court->team_away);
+//	court_team_kick_players(&court->team_home);
 }
 
 /* Finish the current set by signaling
@@ -397,11 +423,11 @@ void court_finish_set(court_t* court){
  * playes. If court is NULL, let them both 
  * return 0 for the time being.*/
 size_t court_get_home_sets(court_t* court){
-	return (court ? court->sets_won_home : 0);
+	return (court ? court->team_home.sets_won : 0);
 }
 
 size_t court_get_away_sets(court_t* court){
-	return (court ? court->sets_won_away : 0);
+	return (court ? court->team_away.sets_won : 0);
 }
 
 
@@ -437,7 +463,7 @@ void court_main(unsigned int court_id, partners_table_t* pt) {
 	for (i = 0; i < TOTAL_PLAYERS; i++) 
 		log_write(INFO_L, "Court %03d: Player %03d won a total of %d matches\n", court->court_id, i, court->player_points[i]);
 
-	log_write(INFO_L, "Court %03d: Destroying court\n", court->court_id, i, court->player_points[i]);
+	log_write(INFO_L, "Court %03d: Destroying court\n", court->court_id);
 	
 	partners_table_destroy(court->pt);
 	court_destroy(court);
