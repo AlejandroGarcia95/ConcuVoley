@@ -375,7 +375,6 @@ void player_main(unsigned int id) {
 	log_write(INFO_L, "Player %03d: Launched as %s using PID: %d\n", player->id, p_name, getpid());
 	log_write(INFO_L, "Player %03d: Player skill is: %d\n", player->id, player_get_skill());
 	
-
 	// TODO: here player should decide whether to get into the stadium,
 	// leave if its already inside or look for a free court if it
 	// wants to play.

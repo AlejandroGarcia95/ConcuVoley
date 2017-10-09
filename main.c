@@ -21,6 +21,7 @@
 #include "partners_table.h"
 #include "protocol.h"
 #include "semaphore.h"
+#include "score_table.h"
 
 /* Returns negative in case of error!*/
 int main_init(){
@@ -103,7 +104,7 @@ int launch_player(unsigned int player_id) {
 
 
 // TODO: make so it is not necesary to pass pointer to partners table
-int launch_court(unsigned int court_id, partners_table_t* pt) {
+int launch_court(unsigned int court_id, partners_table_t* pt, score_table_t* st) {
 	log_write(INFO_L, "Main: Launching court %03d!\n", court_id);
 
 	// New process, new court!
@@ -113,7 +114,7 @@ int launch_court(unsigned int court_id, partners_table_t* pt) {
 		log_write(ERROR_L, "Main: Fork failed!\n");
 		return -1;
 	} else if (pid == 0) { // Son aka court
-		court_main(court_id, pt);
+		court_main(court_id, pt, st);
 		assert(false); // Should not return!
 	}
 	return 0;
@@ -121,23 +122,6 @@ int launch_court(unsigned int court_id, partners_table_t* pt) {
 }
 
 
-/*
-
-int launch_referee(partners_table_t* pt) {
-	log_write(INFO_L, "Main: Launching referee!\n");
-
-	pid_t pid = fork();
-
-	if (pid < 0) {
-		log_write(ERROR_L, "Main: Fork failed!\n");
-		return -1;
-	} else if (pid == 0) {
-		referee_main(pt);
-		assert(false); // Should not return!
-	}
-	return 0;
-}
-*/
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
  * 
  * 		MAIN DOWN HERE
@@ -172,9 +156,15 @@ int main(int argc, char **argv){
 		log_write(ERROR_L, "Main: Error creating partners table [errno: %d]\n", errno);
 	}
 
+	// Create score table
+	score_table_t* st = score_table_create(TOTAL_PLAYERS);
+	if(!st) {
+		log_write(ERROR_L, "Main: Error creating score table [errno: %d]\n", errno);
+	}
+
 	// Launch court processes
 	for (i = 0; i < TOTAL_COURTS; i++) {
-		launch_court(i, pt);
+		launch_court(i, pt, st);
 	}
 	
 	// We create a referee to administrate the tournament!
@@ -201,7 +191,8 @@ int main(int argc, char **argv){
 		log_write(INFO_L, "Main: Proccess pid %d finished with exit status %d\n", pid, ret);
 	}
 
-	partners_table_free_table(pt);		
+	partners_table_free_table(pt);
+	score_table_free_table(st);		
 
 	log_write(INFO_L, "Main: Tournament ended correctly \\o/\n");
 	log_close();

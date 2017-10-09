@@ -8,10 +8,6 @@
 
 #include "partners_table.h"
 
-// Set this flag if players ids start ar 0; clear it if ids start at 1
-#define START_AT_ZERO 1
-
-// TODO: Add a lock to this (just uncomment the locks calls)
 
 /* Dinamically allocates a new partners_table based on the 
  * amount of players received. Returns NULL on error.*/
