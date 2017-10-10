@@ -1,6 +1,5 @@
 *.o
 *.swp
-*.txt
 main
 fifos/
 locks/

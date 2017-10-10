@@ -12,9 +12,6 @@
 #include "tournament.h"
 #include "protocol.h"
 
-#define PLAYERS_PER_MATCH 4
-#define PLAYERS_PER_TEAM (PLAYERS_PER_MATCH / 2)
-
 #define SETS_AMOUNT 5
 #define SETS_WINNING 3
 
@@ -47,8 +44,6 @@ typedef struct court_ {
 	court_team_t team_away; // team 1
 	uint8_t connected_players;
 	
-	partners_table_t* pt;
-	score_table_t* st;
 	tournament_t* tm;
 } court_t;
 
@@ -88,7 +83,8 @@ void court_team_add_score_players(court_team_t team, score_table_t* st, int scor
  * with them are the ones received.
  * Pre 2: The players processes ARE CHILDREN
  * PROCESSES of the process using this court.*/
-court_t* court_create(unsigned int court_id, partners_table_t* pt, score_table_t* st, tournament_t* tm);
+court_t* court_create(unsigned int court_id, tournament_t* tm);
+
 
 /* Kills the received court and sends flowers
  * to his widow.*/
@@ -118,9 +114,9 @@ unsigned int court_player_to_court_id(court_t* court, unsigned int player_id);
 
 /* Inverse of the function above. Receives a "player_court_id"
  * relative to this court and returns the player_id. Returns
- * something above TOTAL_PLAYERS in case of error.*/
+ * something above players amount in case of error.*/
 unsigned int court_court_id_to_player(court_t* court, unsigned int pc_id);
-void court_main(unsigned int court_id, partners_table_t* pt, score_table_t* st, tournament_t* tm);
+void court_main(unsigned int court_id, tournament_t* tm);
 
 /* Returns the sets won by home and away 
  * playes. If court is NULL, let them both 

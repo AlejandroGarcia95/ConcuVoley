@@ -14,6 +14,11 @@ void parse_value(struct conf* sc, char* param, size_t p_value){
 		return;
 		}
 		
+	if(strcmp(param, "P") == 0) {
+		sc->players = p_value;
+		return;
+		}
+		
 	if(strcmp(param, "K") == 0) {
 		sc->matches = p_value;
 		return;

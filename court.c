@@ -18,8 +18,8 @@
 #include "protocol.h"
 
 // In microseconds!
-#define SET_MAX_DURATION 2500000 
-#define SET_MIN_DURATION 350000 
+#define SET_MAX_DURATION 2000000 
+#define SET_MIN_DURATION 300000 
 
 
 // --------------- Court team section --------------
@@ -30,7 +30,7 @@ void court_team_initialize(court_team_t* team){
 	team->sets_won = 0;
 	int i;
 	for (i = 0; i < PLAYERS_PER_TEAM; i++)
-		team->team_players[i] = TOTAL_PLAYERS + 8;
+		team->team_players[i] = INVALID_PLAYER_ID;
 }
 
 /* Returns true if team is full (no other member can
@@ -96,9 +96,9 @@ unsigned int court_player_to_court_id(court_t* court, unsigned int player_id){
 
 /* Inverse of the function above. Receives a "player_court_id"
  * relative to this court and returns the player_id. Returns
- * something above TOTAL_PLAYERS in case of error.*/
+ * something above players amount in case of error.*/
 unsigned int court_court_id_to_player(court_t* court, unsigned int pc_id){
-	if(pc_id > PLAYERS_PER_MATCH) return TOTAL_PLAYERS + 8;
+	if(pc_id > PLAYERS_PER_MATCH) return INVALID_PLAYER_ID;
 	court_team_t team = court->team_home;
 	if(pc_id >=  PLAYERS_PER_TEAM) {
 		pc_id -= PLAYERS_PER_TEAM;
@@ -115,20 +115,20 @@ void manage_players_scores(court_t* court){
 			case 0:
 			case 1:
 				assert(court->team_away.sets_won == 3);
-				court_team_add_score_players(court->team_away, court->st, 3);
+				court_team_add_score_players(court->team_away, court->tm->tm_data->st, 3);
 				break;
 			case 2:
 				assert(court->team_away.sets_won == 3);
-				court_team_add_score_players(court->team_away, court->st, 2);
-				court_team_add_score_players(court->team_home, court->st, 1);
+				court_team_add_score_players(court->team_away, court->tm->tm_data->st, 2);
+				court_team_add_score_players(court->team_home, court->tm->tm_data->st, 1);
 				break;
 			case 3:
 				if(court->team_away.sets_won == 2){
-					court_team_add_score_players(court->team_away, court->st, 1);
-					court_team_add_score_players(court->team_home, court->st, 2);
+					court_team_add_score_players(court->team_away, court->tm->tm_data->st, 1);
+					court_team_add_score_players(court->team_home, court->tm->tm_data->st, 2);
 				}
 				else
-					court_team_add_score_players(court->team_home, court->st, 3);
+					court_team_add_score_players(court->team_home, court->tm->tm_data->st, 3);
 				break;
 	}		
 }
@@ -153,7 +153,44 @@ void connect_player_in_team(court_t* court, unsigned int p_id, unsigned int team
 	court->connected_players++;
 }
 
+/* Kicks every player from the court. This function should be used when
+ * the players on the court have been alread accepted on the court (i.e.
+ * they were accepted and remained too long, hence should be kicked).
+ * For kicking the player without accepting, use reject_player.*/
+void kick_all_players(court_t* court){
+	lock_acquire(court->tm->tm_lock);
+	// Kick all players!
+	int i;
+	for(i = 0; i < court->connected_players; i++) {
+		int p_id = court_court_id_to_player(court, i);
+		
+		log_write(CRITICAL_L, "Court %03d: Player %03d remained too long, let's kick them!\n", court->court_id, p_id);
+		message_t msg = {};
+		msg.m_player_id = p_id;
+		msg.m_type = MSG_MATCH_REJECT;
+		if (!send_msg(court->player_fifos[i], &msg)) {
+			log_write(ERROR_L, "Court %03d: Failed to send reject msg to player %03d [errno: %d]\n", court->court_id, p_id, errno);
+			exit(-1);	// TODO: don't bail, just revert changes
+		}
+		close(court->player_fifos[i]);
+	}
+	court->connected_players = 0;
+	court_team_initialize(&court->team_home);
+	court_team_initialize(&court->team_away);
+	close(court->court_fifo);
+	court->court_fifo = -1;
+	for (i = 0; i < PLAYERS_PER_MATCH; i++) 
+		court->player_fifos[i] = -1;
+			
+	court->tm->tm_data->tm_courts[court->court_id].court_status = TM_C_FREE;
+	court->tm->tm_data->tm_courts[court->court_id].court_num_players = 0;
+	for(i = 0; i < PLAYERS_PER_MATCH; i++)
+		court->tm->tm_data->tm_courts[court->court_id].court_players[i] = INVALID_PLAYER_ID;
+	lock_release(court->tm->tm_lock);
+}
+
 void reject_player(court_t* court, unsigned int p_id) {
+	lock_acquire(court->tm->tm_lock);
 	log_write(CRITICAL_L, "Court %03d: Player %03d couldn't find a team, we should kick him!!\n", court->court_id, p_id);
 	message_t msg = {};
 	msg.m_player_id = p_id;
@@ -163,26 +200,51 @@ void reject_player(court_t* court, unsigned int p_id) {
 		exit(-1);	// TODO: don't bail, just revert changes
 	}
 	close(court->player_fifos[court->connected_players]);
+	
+	
+	court_data_t cd = court->tm->tm_data->tm_courts[court->court_id];
+
+	cd.court_num_players--;
+	cd.court_players[cd.court_num_players] = INVALID_PLAYER_ID;
+	cd.court_status = TM_C_FREE;
+	court->tm->tm_data->tm_courts[court->court_id] = cd;
+
+	lock_release(court->tm->tm_lock);
+}
+
+void court_self_destruct(court_t* court){
+	kick_all_players(court);
+	score_table_print(court->tm->tm_data->st);
+
+	log_write(INFO_L, "Court %03d: Destroying court\n", court->court_id);
+	
+	lock_acquire(court->tm->tm_lock);
+	court->tm->tm_data->tm_courts[court->court_id].court_status = TM_C_DISABLED;
+	lock_release(court->tm->tm_lock);
+
+	court_destroy(court);
+	log_close();
+	exit(0);
 }
 
 /* Marks each player's partner on the partners_table
  * stored at court.*/
 void mark_players_partners(court_t* court){
-	if((!court) || (!court->pt)) return;
+	if((!court) || (!court->tm->tm_data->pt)) return;
 	// Mark each players' partner (home)
 	int i, j;
 	for(i = 0; i < PLAYERS_PER_TEAM; i++)
 		for(j = i + 1; j < PLAYERS_PER_TEAM; j++) {
 			unsigned int p1 = court->team_home.team_players[i];
 			unsigned int p2 = court->team_home.team_players[j];
-			set_played_together(court->pt, p1, p2);
+			set_played_together(court->tm->tm_data->pt, p1, p2);
 			}
 	// Mark each players' partner (away)
 	for(i = 0; i < PLAYERS_PER_TEAM; i++)
 		for(j = i + 1; j < PLAYERS_PER_TEAM; j++) {
 			unsigned int p1 = court->team_away.team_players[i];
 			unsigned int p2 = court->team_away.team_players[j];
-			set_played_together(court->pt, p1, p2);
+			set_played_together(court->tm->tm_data->pt, p1, p2);
 			}
 }
 
@@ -200,7 +262,7 @@ void handle_player_team(court_t* court, message_t msg){
 			break;
 		case 1: // Second player to connect.
 			// If can team up with first player, let them do it
-			if(court_team_player_can_join_team(court->team_home ,msg.m_player_id, court->pt))
+			if(court_team_player_can_join_team(court->team_home ,msg.m_player_id, court->tm->tm_data->pt))
 				connect_player_in_team(court, msg.m_player_id, 0);
 			else // If not, go to other team
 				connect_player_in_team(court, msg.m_player_id, 1);
@@ -213,10 +275,10 @@ void handle_player_team(court_t* court, message_t msg){
 				}
 			
 			// Check if can join team0
-			if(court_team_player_can_join_team(court->team_home ,msg.m_player_id, court->pt))
+			if(court_team_player_can_join_team(court->team_home ,msg.m_player_id, court->tm->tm_data->pt))
 				connect_player_in_team(court, msg.m_player_id, 0);
 			// Check if can join team1
-			else if(court_team_player_can_join_team(court->team_away ,msg.m_player_id, court->pt))
+			else if(court_team_player_can_join_team(court->team_away ,msg.m_player_id, court->tm->tm_data->pt))
 				connect_player_in_team(court, msg.m_player_id, 1);
 			else // kick player
 				reject_player(court, msg.m_player_id);
@@ -225,29 +287,7 @@ void handle_player_team(court_t* court, message_t msg){
 		
 	join_attempts++;
 	if(join_attempts == JOIN_ATTEMPTS_MAX) {
-		// Kick all players!
-		int i;
-		for(i = 0; i < court->connected_players; i++) {
-			int p_id = court_court_id_to_player(court, i);
-			
-			log_write(CRITICAL_L, "Court %03d: Player %03d remained too long, let's kick them!\n", court->court_id, p_id);
-			message_t msg = {};
-			msg.m_player_id = p_id;
-			msg.m_type = MSG_MATCH_REJECT;
-			if (!send_msg(court->player_fifos[i], &msg)) {
-				log_write(ERROR_L, "Court %03d: Failed to send reject msg to player %03d [errno: %d]\n", court->court_id, p_id, errno);
-				exit(-1);	// TODO: don't bail, just revert changes
-			}
-			close(court->player_fifos[i]);
-		}
-		court->connected_players = 0;
-		court_team_initialize(&court->team_home);
-		court_team_initialize(&court->team_away);
-		close(court->court_fifo);
-		court->court_fifo = -1;
-		for (i = 0; i < PLAYERS_PER_MATCH; i++) 
-			court->player_fifos[i] = -1;
-	
+		kick_all_players(court);
 		join_attempts = 0;
 		}
 }
@@ -274,7 +314,7 @@ void open_court_fifo(court_t* court){
 /* Dynamically creates a new court. Returns NULL in failure.
  * Pre 1: The players processes were already created the fifos for communicating with
  * them are the ones received.*/
-court_t* court_create(unsigned int court_id, partners_table_t* pt, score_table_t* st, tournament_t* tm) {
+court_t* court_create(unsigned int court_id, tournament_t* tm) {
 
 	court_t* court = malloc(sizeof(court_t));
 	if (!court) return NULL;
@@ -288,8 +328,6 @@ court_t* court_create(unsigned int court_id, partners_table_t* pt, score_table_t
 
 	court_team_initialize(&court->team_away);
 	court_team_initialize(&court->team_home);
-	court->pt = pt;
-	court->st = st;
 	court->tm = tm;
 	court->connected_players = 0;
 	return court;
@@ -297,8 +335,10 @@ court_t* court_create(unsigned int court_id, partners_table_t* pt, score_table_t
 
 /* Kills the received court and sends flowers
  * to his widow.*/
-// TODO: Refactor this (add _destroy calls for court->tm, court->pt, etc)
 void court_destroy(court_t* court){
+	partners_table_destroy(court->tm->tm_data->pt);
+	score_table_destroy(court->tm->tm_data->st);
+	tournament_destroy(court->tm);
 	free(court);
 	// Sry, no flowers
 }
@@ -310,7 +350,6 @@ void court_destroy(court_t* court){
  * and calls to court_play.
  * Once court ends, it comes here again.. eager to start another court.
  */
- // TODO: Refactor using new court_team_t
 void court_lobby(court_t* court) {
 	log_write(INFO_L, "Court %03d: A new match is about to begin... lobby\n", court->court_id, errno);
 	court->connected_players = 0;
@@ -320,6 +359,16 @@ void court_lobby(court_t* court) {
 
 	while (court->connected_players < PLAYERS_PER_MATCH) {
 		sem_wait(court->tm->tm_data->tm_courts_sem, court->court_id);
+		
+		lock_acquire(court->tm->tm_lock);
+		int players_alive = court->tm->tm_data->tm_active_players;
+		lock_release(court->tm->tm_lock);
+		
+		if(players_alive < 4) {
+			log_write(CRITICAL_L, "Court %03d: No more matches can be played. Self-destruct protocol started.\n", court->court_id);
+			court_self_destruct(court);
+			assert(false);
+		}
 
 		// Now court is in the "empty" state, waiting for new connections
 		open_court_fifo(court);
@@ -444,6 +493,8 @@ void court_play(court_t* court){
 	lock_acquire(court->tm->tm_lock);
 	court->tm->tm_data->tm_courts[court->court_id].court_status = TM_C_FREE;
 	court->tm->tm_data->tm_courts[court->court_id].court_num_players = 0;
+	for(i = 0; i < PLAYERS_PER_MATCH; i++)
+		court->tm->tm_data->tm_courts[court->court_id].court_players[i] = INVALID_PLAYER_ID;
 	lock_release(court->tm->tm_lock);
 	
 	manage_players_scores(court);
@@ -470,11 +521,11 @@ size_t court_get_away_sets(court_t* court){
 
 
 
-void court_main(unsigned int court_id, partners_table_t* pt, score_table_t* st, tournament_t* tm) {
+void court_main(unsigned int court_id, tournament_t* tm) {
 
 	// Launch a single court, then end the tournament
 	// TODO: refactor this? Make it singleton to handle signals?
-	court_t* court = court_create(court_id, pt, st, tm);
+	court_t* court = court_create(court_id, tm);
 	if(!court)
 		exit(-1);
 		
@@ -494,12 +545,13 @@ void court_main(unsigned int court_id, partners_table_t* pt, score_table_t* st, 
 
 	int i;
 	// TODO: Change for a 'graceful quit'
-	for (i = 0; i < COURT_LIFE; i++) {
+	//for (i = 0; i < COURT_LIFE; i++) {
+	while(1){ // I'm evil Aleeee
 		// Warning reading on a shared memory without locking!
 		court_lobby(court);
 	}
 
-	score_table_print(court->st);
+/*	score_table_print(court->tm->tm_data->st);
 
 	log_write(INFO_L, "Court %03d: Destroying court\n", court->court_id);
 	
@@ -507,12 +559,9 @@ void court_main(unsigned int court_id, partners_table_t* pt, score_table_t* st, 
 	court->tm->tm_data->tm_courts[court->court_id].court_status = TM_C_DISABLED;
 	lock_release(court->tm->tm_lock);
 
-	partners_table_destroy(court->pt);
-	tournament_destroy(court->tm);
-	score_table_destroy(court->st);
 	court_destroy(court);
 	//sem_destroy(sem);
 	log_close();
 	exit(0);
-
+*/
 }

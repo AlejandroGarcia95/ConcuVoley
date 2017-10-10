@@ -2,15 +2,16 @@
 totally safe to write in the middle of the file, though all
 parameters must be supplied in the following format in order
 for config. parse to work. The format is:
-<Param. name> : <value>
+<Param_name> : <value>
 (where the two spaces and the end of line are compulsory!)
 Also note the order for the parameters is irrelevant.*/
 // F defines rows
-F : 10
+F : 2
+// C defines columns. Note F*C defines amount of courts (former TOTAL_COURTS)
+C : 2
 // K defines number of matches
 K : 9
-// C defines columns
-C : 5
 // M defines the beach capacity
 M : 18
-
+// P defines amount of players (former TOTAL_PLAYERS)
+P : 18

@@ -15,6 +15,7 @@ struct conf {
 	size_t cols;
 	size_t matches;
 	size_t capacity;
+	size_t players;
 };
 
 /* Stores the value of the parameter recieved

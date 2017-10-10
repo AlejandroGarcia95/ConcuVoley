@@ -29,6 +29,7 @@ typedef struct player_ {
 	char name[NAME_MAX_LENGTH];
 	size_t skill;
 	size_t matches_played;
+	size_t times_kicked;
 	bool currently_playing;
 
 	tournament_t* tm;

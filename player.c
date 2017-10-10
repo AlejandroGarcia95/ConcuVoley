@@ -18,8 +18,8 @@
 #include "tournament.h"
 
 // In microseconds!
-#define MIN_SCORE_TIME 15000
-#define MAX_SCORE_TIME 40000
+#define MIN_SCORE_TIME 10000
+#define MAX_SCORE_TIME 30000
 
 #define MAX_ATTEMPTS 10
 
@@ -68,6 +68,7 @@ player_t* player_create(){
 	// Initialize fields
 	player->skill = generate_random_skill();
 	player->matches_played = 0;
+	player->times_kicked = 0;
 	player->currently_playing = false;
 	player->id = 0;
 	player->tm = NULL;
@@ -79,9 +80,14 @@ player_t* player_create(){
 void player_seppuku(bool release_res){
 	if(release_res){
 		player_t* player =  player_get_instance();
+		lock_acquire(player->tm->tm_lock);
+		player->tm->tm_data->tm_active_players--;
+		lock_release(player->tm->tm_lock);
+		
 		player_destroy(player);
 		log_close();
 	}
+
 	exit(-1);
 }
 
@@ -104,7 +110,7 @@ void player_destroy(){
 	if (player) {
 		if (player->tm)
 			tournament_destroy(player->tm);
-	       	free(player);
+	    free(player);
 	}
 }
 
@@ -174,14 +180,7 @@ void player_set_sigset_handler() {
 void player_unset_sigset_handler() {
 	signal(SIG_SET, SIG_IGN);
 	return;
-/*	struct sigaction sa;
-	sigset_t sigset;	
-	sigemptyset(&sa.sa_mask);
-	sa.sa_flags = 0;
-	sa.sa_handler = NULL;
-	sigaction(SIG_SET, &sa, NULL);*/
 }
-
 
 /* Make this player play the current set
  * storing their score in the set_score
@@ -200,7 +199,6 @@ void player_play_set(unsigned long int* set_score){
 		(*set_score)++;
 	}
 }
-
 
 
 // TODO: documentation
@@ -238,9 +236,10 @@ void player_at_court(player_t* player, int court_fifo, int player_fifo) {
 			// but other players that arrived couldn't make a team with them.
 			// Hence, court kicked every player there
 			log_write(INFO_L, "Player %03d: Kicked from previously accepted court\n", player->id);
+			player->times_kicked++;
 			return;
 		} else {
-			log_write(INFO_L, "Player %03d: wont start playing\n", player->id);
+			log_write(INFO_L, "Player %03d: wont start playing, received message %d\n", player->id, msg.m_type);
 			miss_count++;
 			if (miss_count >= 100) {
 				// Have to really praise you for this
@@ -306,11 +305,17 @@ void player_join_court(player_t* player, unsigned int court_id) {
 		player_seppuku(true);
 	}
 	// Received a msg!!
-	assert((msg.m_type == MSG_MATCH_ACCEPT) || (msg.m_type == MSG_MATCH_REJECT));
+	bool qiq = ((msg.m_type == MSG_MATCH_ACCEPT) || (msg.m_type == MSG_MATCH_REJECT));
+	if(!qiq) {
+		log_write(CRITICAL_L, "Player %03d: Message was %d\n", player->id, msg.m_type);
+		player_seppuku(true);
+	}
+
 	if (msg.m_type == MSG_MATCH_ACCEPT) {
 		player_at_court(player, court_fifo, my_fifo);
 	} else {
 		log_write(ERROR_L, "Player %03d: Player was rejected\n", player->id);
+		player->times_kicked++;
 	}
 	player_unset_sigset_handler();
 
@@ -353,26 +358,28 @@ bool player_looking_for_court(player_t* player) {
 	int i;
 	int best_so_far = -1;
 	int best_num_players = -1;
-	for (i = 0; i < TOTAL_COURTS; i++) {
+	for (i = 0; i < player->tm->total_courts; i++) {
 		court_data_t cd = player->tm->tm_data->tm_courts[i];
 		
 		// Which criteria will the player use to join a court??
 		//	Should be: search for a court with most num_players which has room.
 		//		   if there is a tie, choose the first one.
 		if ((cd.court_status == TM_C_FREE) && (cd.court_num_players > best_num_players)) {
-			log_write(INFO_L, "Player %03d: checking for court %3d, and is %d with %d players\n", player->id, i, cd.court_status, cd.court_num_players);
+			log_write(INFO_L, "Player %03d: checking for court %03d, and is %d with %d players\n", player->id, i, cd.court_status, cd.court_num_players);
 			best_so_far = i;
 			best_num_players = cd.court_num_players;
 		}
 	}
-	if (best_so_far >= 0 && player->tm->tm_data->tm_active_players >= 4) {
+	if ((best_so_far >= 0) && (player->tm->tm_data->tm_active_players >= PLAYERS_PER_MATCH)) {
 		court_data_t cd = player->tm->tm_data->tm_courts[best_so_far];
 		cd.court_players[cd.court_num_players] = player->id;
 		cd.court_num_players++;
-		if (cd.court_num_players == 4)
+		if (cd.court_num_players == PLAYERS_PER_MATCH)
 			cd.court_status = TM_C_BUSY;
 		player->tm->tm_data->tm_courts[best_so_far] = cd;
 		court_id = best_so_far;
+		log_write(CRITICAL_L, "Player %03d: Incremented court_num_players of court %03d, value is at %d\n", 
+						player->id, court_id, player->tm->tm_data->tm_courts[court_id].court_num_players);
 	}
 	lock_release(player->tm->tm_lock);
 
@@ -422,8 +429,14 @@ void player_main(unsigned int id, tournament_t* tm) {
 		else
 			attempts = 0;
 		
+		// Sad end for player: leaves when nobody loves him 
+		if(player->times_kicked == MAX_TIMES_KICKED) {
+			log_write(ERROR_L, "Player %03d: Kicked too many times. Giving up!\n", player->id);
+			break;
+			}
+		
 		// Wait some time before joining again
-		// TODO: Change for wait/broadcast or similar
+		// TODO: Add a probability to leave beach
 		unsigned long int t_rand = rand() % 2000000;
 		usleep(t_rand);
 	}
