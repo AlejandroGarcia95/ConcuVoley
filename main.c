@@ -22,6 +22,7 @@
 #include "protocol.h"
 #include "semaphore.h"
 #include "score_table.h"
+#include "tournament.h"
 
 /* Returns negative in case of error!*/
 int main_init(){
@@ -156,6 +157,11 @@ int main(int argc, char **argv){
 		log_write(ERROR_L, "Main: Error creating partners table [errno: %d]\n", errno);
 	}
 
+	tournament_t* tm = tournament_create();
+	if (!tm) {
+		log_write(ERROR_L, "Main: Error creating tournament data [errno: %d]\n", errno);
+	}
+
 	// Create score table
 	score_table_t* st = score_table_create(TOTAL_PLAYERS);
 	if(!st) {
@@ -192,6 +198,7 @@ int main(int argc, char **argv){
 	}
 
 	partners_table_free_table(pt);
+	tournament_shmrm(tm);
 	score_table_free_table(st);		
 
 	log_write(INFO_L, "Main: Tournament ended correctly \\o/\n");
