@@ -410,7 +410,7 @@ void court_play(court_t* court){
 		// Show this set score
 		for(i = 0; i < PLAYERS_PER_MATCH; i++) {
 			int p_id = court_court_id_to_player(court, i);
-			log_write(NONE_L, "Court %03d: Player %03d set score: %ld\n", court->court_id, p_id, players_scores[i]);
+			log_write(INFO_L, "Court %03d: Player %03d set score: %ld\n", court->court_id, p_id, players_scores[i]);
 			}
 		// Determinate the winner of the set
 		unsigned long int score_home = 0, score_away = 0;

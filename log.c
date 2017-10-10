@@ -133,7 +133,7 @@ int log_write(log_level lvl, char* msg, ... ){
 			break;
 		}
 			
-	fprintf(log->log_file, "\x1b[39m[%s] [%s] \x1b[1;38;5;%dm", time_str, str_lvl, ((getpid() % 20) * 2 + 1));
+	fprintf(log->log_file, "\x1b[39m[%s] [%s]\x1b[1;38;5;%dm [%d] ", time_str, str_lvl, ((getpid() % 20) * 2 + 1), getpid());
 	vfprintf(log->log_file, msg, args);
 	//fprintf(log->log_file, "\x1b[37;1", time_str, str_lvl);
 	va_end(args);

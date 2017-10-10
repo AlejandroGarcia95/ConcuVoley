@@ -132,6 +132,23 @@ int launch_court(unsigned int court_id, partners_table_t* pt, score_table_t* st,
 }
 
 
+
+// Debug only!
+void print_tournament_status(tournament_t* tm) {
+	lock_acquire(tm->tm_lock);
+	int i;
+	log_write(INFO_L, "Main: %d players remain active!\n", tm->tm_data->tm_active_players);
+	for (i = 0; i < TOTAL_COURTS; i++) {
+		court_data_t cd = tm->tm_data->tm_courts[i];
+		log_write(INFO_L, "Main: Court %03d is in state %d, with %d players inside\n", i, cd.court_status, cd.court_num_players);
+		int j;
+		for (j = 0; j < cd.court_num_players; j++) {
+			log_write(INFO_L, "\t\t\t---> Player %03d is inside\n", cd.court_players[j]);
+		}
+	}
+	lock_release(tm->tm_lock);
+}
+
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
  * 
  * 		MAIN DOWN HERE
@@ -202,6 +219,9 @@ int main(int argc, char **argv){
 		int pid = wait(&status);
 		int ret = WEXITSTATUS(status);
 		log_write(INFO_L, "Main: Proccess pid %d finished with exit status %d\n", pid, ret);
+
+		print_tournament_status(tm);
+
 	}
 
 	partners_table_free_table(pt);
