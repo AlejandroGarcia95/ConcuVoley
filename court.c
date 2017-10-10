@@ -319,6 +319,8 @@ void court_lobby(court_t* court) {
 	message_t msg = {};
 
 	while (court->connected_players < PLAYERS_PER_MATCH) {
+		sem_wait(court->tm->tm_data->tm_courts_sem, court->court_id);
+
 		// Now court is in the "empty" state, waiting for new connections
 		open_court_fifo(court);
 		log_write(INFO_L, "Court %03d: Court awaiting connections\n", court->court_id, errno);
@@ -480,20 +482,22 @@ void court_main(unsigned int court_id, partners_table_t* pt, score_table_t* st, 
 
 	get_court_fifo_name(court_id, court->court_fifo_name);
 	// Como es un semaphore set.. se pueden crear de un saque todos lo semáforos!
-	int sem = sem_get(court->court_fifo_name, 1);
-	if (sem < 0)
-		log_write(ERROR_L, "Court %03d: Error creating semaphore [errno: %d]\n", court->court_id, errno);
+	//int sem = sem_get(court->court_fifo_name, 1);
+	//if (sem < 0)
+	///	log_write(ERROR_L, "Court %03d: Error creating semaphore [errno: %d]\n", court->court_id, errno);
 
-	log_write(INFO_L, "Court %03d: Got semaphore %d with name %s!!\n", court->court_id, sem, court->court_fifo_name);
-		if (sem_put(sem, 0, 4) < 0) {
-			log_write(ERROR_L, "Court %03d: Error initializing the semaphore [errno: %d]\n", court->court_id, errno);
-			exit(-1);
-		}
+	//log_write(INFO_L, "Court %03d: Got semaphore %d with name %s!!\n", court->court_id, sem, court->court_fifo_name);
+	//	if (sem_put(sem, 0, 4) < 0) {
+	//		log_write(ERROR_L, "Court %03d: Error initializing the semaphore [errno: %d]\n", court->court_id, errno);
+	//		exit(-1);
+	//	}
 
 	int i;
 	// TODO: Change for a 'graceful quit'
-	for (i = 0; i < COURT_LIFE; i++) 
+	for (i = 0; i < COURT_LIFE; i++) {
+		// Warning reading on a shared memory without locking!
 		court_lobby(court);
+	}
 
 	score_table_print(court->st);
 
@@ -507,7 +511,7 @@ void court_main(unsigned int court_id, partners_table_t* pt, score_table_t* st, 
 	tournament_destroy(court->tm);
 	score_table_destroy(court->st);
 	court_destroy(court);
-	sem_destroy(sem);
+	//sem_destroy(sem);
 	log_close();
 	exit(0);
 

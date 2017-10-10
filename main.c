@@ -25,7 +25,7 @@
 #include "tournament.h"
 
 /* Returns negative in case of error!*/
-int main_init(){
+int main_init(tournament_t* tm){
 	srand(time(NULL));
 	// Spawn log
 	if(log_write(NONE_L, "Main: Simulation started!\n") < 0){
@@ -61,22 +61,31 @@ int main_init(){
 		}
 	}
 	
-	// Start semaphores for courts. Every court is responsible for destroying own semaphores
-	unsigned int cid = 0;
-	// for every court cid in (1, court_max) do:
-		char court_fifo_name[MAX_FIFO_NAME_LEN];
-		get_court_fifo_name(cid, court_fifo_name);
-		int sem = sem_get(court_fifo_name, 1);
-		if (sem < 0) {
-			log_write(ERROR_L, "Main: Error creating semaphore [errno: %d]\n", errno);
-			return -1;
-		}
+	// Court semaphores
+	int sem = sem_get("court.c", TOTAL_COURTS);
+	if (sem < 0) {
+		log_write(ERROR_L, "Main: Error creating semaphore [errno: %d]\n", errno);
+		return -1;
+	}
+	log_write(INFO_L, "Main: Got semaphore %d with name %s\n", sem, "court.c");
+	if (sem_init_all(sem, TOTAL_COURTS, 0) < 0) {
+		log_write(ERROR_L, "Main: Error initializing the semaphore [errno: %d]\n", errno);
+		return -1;
+	}
+	tm->tm_data->tm_courts_sem = sem;
 
-		log_write(INFO_L, "Main: Got semaphore %d with name %s\n", sem, court_fifo_name);
-		if (sem_init(sem, 0, 0) < 0) {
-			log_write(ERROR_L, "Main: Error initializing the semaphore [errno: %d]\n", errno);
-			return -1;
-		}
+	// PLayers semaphores
+	sem = sem_get("player.c", TOTAL_PLAYERS);
+	if (sem < 0) {
+		log_write(ERROR_L, "Main: Error creating semaphore [errno: %d]\n", errno);
+		return -1;
+	}
+	log_write(INFO_L, "Main: Got semaphore %d with name %s\n", sem, "player.c");
+	if (sem_init_all(sem, TOTAL_PLAYERS, 0) < 0) {
+		log_write(ERROR_L, "Main: Error initializing the semaphore [errno: %d]\n", errno);
+		return -1;
+	}
+	tm->tm_data->tm_players_sem = sem;
 }
 
 /* Launches a new process which will assume a
@@ -135,7 +144,12 @@ int main(int argc, char **argv){
 	// otherwise, you don't know where you are going."
 	pid_t main_pid = getpid();
 	
-	if(main_init() < 0) {
+	tournament_t* tm = tournament_create();
+	if (!tm) {
+		log_write(ERROR_L, "Main: Error creating tournament data [errno: %d]\n", errno);
+	}
+
+	if(main_init(tm) < 0) {
 		printf("FATAL: Something went really wrong!\n");
 		return -1;
 	}
@@ -144,11 +158,6 @@ int main(int argc, char **argv){
 
 	// Let's launch player processes and make them play, yay!
 	int i;
-
-	tournament_t* tm = tournament_create();
-	if (!tm) {
-		log_write(ERROR_L, "Main: Error creating tournament data [errno: %d]\n", errno);
-	}
 
 	// Launch players processes
 	for(i = 0; i < TOTAL_PLAYERS; i++){

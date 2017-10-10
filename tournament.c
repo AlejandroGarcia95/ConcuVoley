@@ -60,11 +60,19 @@ void tournament_init(tournament_t* tm) {
 
 	tm->tm_data->tm_active_players = TOTAL_PLAYERS;
 	tm->tm_data->tm_idle_courts = TOTAL_COURTS;
+
+	tm->tm_data->tm_players_sem = -1;
+	tm->tm_data->tm_courts_sem = -1;
 }
 
 void tournament_destroy(tournament_t* tm) {
 	if (!tm) return;
 	lock_destroy(tm->tm_lock);
+
+	if (tm->tm_data->tm_players_sem >= 0)
+		sem_destroy(tm->tm_data->tm_players_sem);
+	if (tm->tm_data->tm_courts_sem >= 0)
+		sem_destroy(tm->tm_data->tm_courts_sem);
 	// Detaches shared memory 
 	shmdt((void*) tm->tm_data);
 	free(tm);

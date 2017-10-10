@@ -3,6 +3,7 @@
 
 #include "lock.h"
 #include "protocol.h"
+#include "semaphore.h"
 
 /*
  * Referee information will now be distributed. Everyone should be able
@@ -48,6 +49,8 @@ typedef struct tournament_data {
 	unsigned int tm_idle_courts;
 	unsigned int tm_active_courts;
 
+	int tm_players_sem;
+	int tm_courts_sem;
 } tournament_data_t;
 
 typedef struct tournament {

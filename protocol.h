@@ -12,10 +12,10 @@
 #include "protocol.h"
 
 // Temporary
-#define TOTAL_PLAYERS 8
-#define TOTAL_COURTS 1
+#define TOTAL_PLAYERS 16
+#define TOTAL_COURTS 4
 #define NUM_MATCHES 3
-#define COURT_LIFE 6 // Change for cut-condition
+#define COURT_LIFE 3 // Change for cut-condition
 
 
 #define MAX_FIFO_NAME_LEN 50

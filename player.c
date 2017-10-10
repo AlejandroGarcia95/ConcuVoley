@@ -261,17 +261,10 @@ void player_join_court(player_t* player, unsigned int court_id) {
 	get_court_fifo_name(court_id, court_fifo_name);
 
 	// Get the court key!!
-	// TODO: change it so it grabs the key to the court it wanna join
-	int sem = sem_get(court_fifo_name, 1);
-	if (sem < 0)
-		log_write(ERROR_L, "Player %03d: Error opening the semaphore [errno: %d]\n", player->id, errno);
-
-	log_write(INFO_L, "Player %03d: Trying to wait on semaphore %d with name %s\n", player->id, sem, court_fifo_name);
-	if (sem_wait(sem, 0) < 0)
-		log_write(ERROR_L, "Player %03d: Error taking semaphore [errno: %d]\n", player->id, errno);
+	sem_post(player->tm->tm_data->tm_courts_sem, court_id);
 
 	player_set_sigset_handler();
-	log_write(INFO_L, "Player %03d: Took semaphore %d\n", player->id, sem);
+	// log_write(INFO_L, "Player %03d: Took semaphore %d\n", player->id, sem);
 
 	// Joining lobby!!
 	char* p_name;
@@ -328,8 +321,8 @@ void player_join_court(player_t* player, unsigned int court_id) {
 
 
 	// Release semaphore
-	if (sem_post(sem, 0) < 0)
-		log_write(ERROR_L, "Player %03d: Error taking semaphore [errno: %d]\n", player->id, errno);
+	// if (sem_post(sem, 0) < 0)
+	//	log_write(ERROR_L, "Player %03d: Error taking semaphore [errno: %d]\n", player->id, errno);
 	log_write(INFO_L, "Player %03d: Released semaphore\n", player->id);
 
 }
