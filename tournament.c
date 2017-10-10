@@ -9,8 +9,7 @@
 
 // For the constans... remove later and allocate dynamically trough parameters
 #include "protocol.h"
-
-
+#include "player.h"
 
 tournament_t* tournament_create() {
 	key_t key = ftok("makefile", 77);
@@ -59,7 +58,7 @@ void tournament_init(tournament_t* tm) {
 		tm->tm_data->tm_courts[i] = cd;
 	}
 
-	tm->tm_data->tm_idle_players = TOTAL_PLAYERS;
+	tm->tm_data->tm_active_players = TOTAL_PLAYERS;
 	tm->tm_data->tm_idle_courts = TOTAL_COURTS;
 }
 

@@ -58,7 +58,7 @@ int main_init(){
 		if(!create_fifo(court_fifo_name)) {
 			log_write(ERROR_L, "Main: FIFO creation error for court %03d [errno: %d]\n", i, errno);
 			return -1;
-	}
+		}
 	}
 	
 	// Start semaphores for courts. Every court is responsible for destroying own semaphores
@@ -85,7 +85,7 @@ int main_init(){
  * player process, this function must call the
  * player_main function to allow it to play 
  * against other in a court. */
-int launch_player(unsigned int player_id) {
+int launch_player(unsigned int player_id, tournament_t* tm) {
 	
 	log_write(INFO_L, "Main: Launching player %03d!\n", player_id);
 
@@ -96,7 +96,7 @@ int launch_player(unsigned int player_id) {
 		log_write(ERROR_L, "Main: Fork failed!\n");
 		return -1;
 	} else if (pid == 0) { // Son aka player
-		player_main(player_id);
+		player_main(player_id, tm);
 		assert(false);	// Should not return!
 	} 
 	return 0;
@@ -105,7 +105,7 @@ int launch_player(unsigned int player_id) {
 
 
 // TODO: make so it is not necesary to pass pointer to partners table
-int launch_court(unsigned int court_id, partners_table_t* pt, score_table_t* st) {
+int launch_court(unsigned int court_id, partners_table_t* pt, score_table_t* st, tournament_t* tm) {
 	log_write(INFO_L, "Main: Launching court %03d!\n", court_id);
 
 	// New process, new court!
@@ -115,7 +115,7 @@ int launch_court(unsigned int court_id, partners_table_t* pt, score_table_t* st)
 		log_write(ERROR_L, "Main: Fork failed!\n");
 		return -1;
 	} else if (pid == 0) { // Son aka court
-		court_main(court_id, pt, st);
+		court_main(court_id, pt, st, tm);
 		assert(false); // Should not return!
 	}
 	return 0;
@@ -139,27 +139,26 @@ int main(int argc, char **argv){
 		printf("FATAL: Something went really wrong!\n");
 		return -1;
 	}
-		
 
 	log_write(NONE_L, "Main: Let the tournament begin!\n");
 
 	// Let's launch player processes and make them play, yay!
 	int i;
 
+	tournament_t* tm = tournament_create();
+	if (!tm) {
+		log_write(ERROR_L, "Main: Error creating tournament data [errno: %d]\n", errno);
+	}
+
 	// Launch players processes
 	for(i = 0; i < TOTAL_PLAYERS; i++){
-		launch_player(i);
+		launch_player(i, tm);
 	}
 	
 	// Create table of partners
 	partners_table_t* pt = partners_table_create(TOTAL_PLAYERS);
 	if(!pt) {
 		log_write(ERROR_L, "Main: Error creating partners table [errno: %d]\n", errno);
-	}
-
-	tournament_t* tm = tournament_create();
-	if (!tm) {
-		log_write(ERROR_L, "Main: Error creating tournament data [errno: %d]\n", errno);
 	}
 
 	// Create score table
@@ -170,7 +169,7 @@ int main(int argc, char **argv){
 
 	// Launch court processes
 	for (i = 0; i < TOTAL_COURTS; i++) {
-		launch_court(i, pt, st);
+		launch_court(i, pt, st, tm);
 	}
 	
 	// We create a referee to administrate the tournament!
@@ -187,7 +186,6 @@ int main(int argc, char **argv){
 		//log_close(log);
 		//return 0;
 	}
-
 
 	// Important note: Here main process is not waiting for referee!
 	for (i = 0; i < (TOTAL_PLAYERS + TOTAL_COURTS); i++) {

@@ -15,10 +15,13 @@
 
 #include "protocol.h"
 #include "semaphore.h"
+#include "tournament.h"
 
 // In microseconds!
 #define MIN_SCORE_TIME 15000
 #define MAX_SCORE_TIME 40000
+
+#define MAX_ATTEMPTS 10
 
 /* Auxiliar function that generates a random
  * skill field for a new player. It returns a
@@ -67,6 +70,7 @@ player_t* player_create(){
 	player->matches_played = 0;
 	player->currently_playing = false;
 	player->id = 0;
+	player->tm = NULL;
 	return player;
 }
 
@@ -97,7 +101,11 @@ player_t* player_get_instance(){
 /* Destroys the received player.*/
 void player_destroy(){
 	player_t* player = player_get_instance();
-	if(player) free(player);
+	if (player) {
+		if (player->tm)
+			tournament_destroy(player->tm);
+	       	free(player);
+	}
 }
 
 /* Set the name for the current player.
@@ -329,6 +337,7 @@ void player_join_court(player_t* player, unsigned int court_id) {
 
 
 /*
+ * TODO: update documentation
  * The player who calls this function is willing to join a court. It will connect with
  * main controller and send a "Gimme a place to play" message.
  *
@@ -338,13 +347,46 @@ void player_join_court(player_t* player, unsigned int court_id) {
  *	  tells which court the player can join.
  *	- the message is of type MSG_TOURNAMENT_END, indicating no 
  *	  more matches will be played, and player should leave.
+ *
+ *
+ * LA POSTA: devuelve true si se pudo conectar a una cancha, false si no había ninguna disponible
  */
-void player_looking_for_court(player_t* player) {
+bool player_looking_for_court(player_t* player) {
 	log_write(INFO_L, "Player %03d: Looking for a court\n", player->id);
 
-	unsigned int court_id = 0;
-	
+	// Search for a free court
+	int court_id = -1;
+	lock_acquire(player->tm->tm_lock);
+	int i;
+	int best_so_far = -1;
+	int best_num_players = -1;
+	for (i = 0; i < TOTAL_COURTS; i++) {
+		court_data_t cd = player->tm->tm_data->tm_courts[i];
+		
+		// Which criteria will the player use to join a court??
+		//	Should be: search for a court with most num_players which has room.
+		//		   if there is a tie, choose the first one.
+		if ((cd.court_status == TM_C_FREE) && (cd.court_num_players > best_num_players)) {
+			log_write(INFO_L, "Player %03d: checking for court %3d, and is %d with %d players\n", player->id, i, cd.court_status, cd.court_num_players);
+			best_so_far = i;
+			best_num_players = cd.court_num_players;
+		}
+	}
+	if (best_so_far >= 0 && player->tm->tm_data->tm_active_players >= 4) {
+		court_data_t cd = player->tm->tm_data->tm_courts[best_so_far];
+		cd.court_players[cd.court_num_players] = player->id;
+		cd.court_num_players++;
+		if (cd.court_num_players == 4)
+			cd.court_status = TM_C_BUSY;
+		player->tm->tm_data->tm_courts[best_so_far] = cd;
+		court_id = best_so_far;
+	}
+	lock_release(player->tm->tm_lock);
+
+	if (court_id < 0)
+		return false;
 	player_join_court(player, court_id);
+	return true;
 }
 
 
@@ -359,7 +401,7 @@ void player_looking_for_court(player_t* player) {
  * (as a set could end unexpectedly). At
  * the end of each set, the player must
  * send through the fifo their score.*/
-void player_main(unsigned int id) {
+void player_main(unsigned int id, tournament_t* tm) {
 	// Re-srand with a changed seed
 	srand(time(NULL) ^ (getpid() << 16));
 	char p_name[NAME_MAX_LENGTH];
@@ -371,6 +413,7 @@ void player_main(unsigned int id) {
 
 	player->id = id;
 	player_set_name(p_name);
+	player->tm = tm;
 	
 	log_write(INFO_L, "Player %03d: Launched as %s using PID: %d\n", player->id, p_name, getpid());
 	log_write(INFO_L, "Player %03d: Player skill is: %d\n", player->id, player_get_skill());
@@ -379,8 +422,12 @@ void player_main(unsigned int id) {
 	// leave if its already inside or look for a free court if it
 	// wants to play.
 	int i, r;
-	while(player->matches_played < NUM_MATCHES) {
-		player_looking_for_court(player);
+	int attempts = 0;
+	while(player->matches_played < NUM_MATCHES && attempts < MAX_ATTEMPTS) {
+		if (!player_looking_for_court(player))
+			attempts++;
+		else
+			attempts = 0;
 		
 		// Wait some time before joining again
 		// TODO: Change for wait/broadcast or similar
@@ -388,6 +435,9 @@ void player_main(unsigned int id) {
 		usleep(t_rand);
 	}
 	
+	lock_acquire(player->tm->tm_lock);
+	player->tm->tm_data->tm_active_players--;
+	lock_release(player->tm->tm_lock);
 
 	log_write(INFO_L, "Player %03d: Now leaving\n", player->id);
 	player_destroy(player);

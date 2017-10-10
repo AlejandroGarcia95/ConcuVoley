@@ -13,6 +13,7 @@
 #include "log.h"
 #include "score_table.h"
 #include "partners_table.h"
+#include "tournament.h"
 
 #include "protocol.h"
 
@@ -273,7 +274,7 @@ void open_court_fifo(court_t* court){
 /* Dynamically creates a new court. Returns NULL in failure.
  * Pre 1: The players processes were already created the fifos for communicating with
  * them are the ones received.*/
-court_t* court_create(unsigned int court_id, partners_table_t* pt, score_table_t* st) {
+court_t* court_create(unsigned int court_id, partners_table_t* pt, score_table_t* st, tournament_t* tm) {
 
 	court_t* court = malloc(sizeof(court_t));
 	if (!court) return NULL;
@@ -289,12 +290,14 @@ court_t* court_create(unsigned int court_id, partners_table_t* pt, score_table_t
 	court_team_initialize(&court->team_home);
 	court->pt = pt;
 	court->st = st;
+	court->tm = tm;
 	court->connected_players = 0;
 	return court;
 }
 
 /* Kills the received court and sends flowers
  * to his widow.*/
+// TODO: Refactor this (add _destroy calls for court->tm, court->pt, etc)
 void court_destroy(court_t* court){
 	free(court);
 	// Sry, no flowers
@@ -434,6 +437,13 @@ void court_play(court_t* court){
 		send_msg(court->player_fifos[i], &msg);
 	}
 
+
+	// Here we update the tournament info to set the court free
+	lock_acquire(court->tm->tm_lock);
+	court->tm->tm_data->tm_courts[court->court_id].court_status = TM_C_FREE;
+	court->tm->tm_data->tm_courts[court->court_id].court_num_players = 0;
+	lock_release(court->tm->tm_lock);
+	
 	manage_players_scores(court);
 	mark_players_partners(court);
 }
@@ -458,11 +468,11 @@ size_t court_get_away_sets(court_t* court){
 
 
 
-void court_main(unsigned int court_id, partners_table_t* pt, score_table_t* st) {
+void court_main(unsigned int court_id, partners_table_t* pt, score_table_t* st, tournament_t* tm) {
 
 	// Launch a single court, then end the tournament
 	// TODO: refactor this? Make it singleton to handle signals?
-	court_t* court = court_create(court_id, pt, st);
+	court_t* court = court_create(court_id, pt, st, tm);
 	if(!court)
 		exit(-1);
 		
@@ -489,7 +499,12 @@ void court_main(unsigned int court_id, partners_table_t* pt, score_table_t* st) 
 
 	log_write(INFO_L, "Court %03d: Destroying court\n", court->court_id);
 	
+	lock_acquire(court->tm->tm_lock);
+	court->tm->tm_data->tm_courts[court->court_id].court_status = TM_C_DISABLED;
+	lock_release(court->tm->tm_lock);
+
 	partners_table_destroy(court->pt);
+	tournament_destroy(court->tm);
 	score_table_destroy(court->st);
 	court_destroy(court);
 	sem_destroy(sem);

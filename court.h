@@ -9,6 +9,7 @@
 #include "log.h"
 #include "score_table.h"
 #include "partners_table.h"
+#include "tournament.h"
 #include "protocol.h"
 
 #define PLAYERS_PER_MATCH 4
@@ -48,6 +49,7 @@ typedef struct court_ {
 	
 	partners_table_t* pt;
 	score_table_t* st;
+	tournament_t* tm;
 } court_t;
 
 // --------------- Court team section --------------
@@ -86,7 +88,7 @@ void court_team_add_score_players(court_team_t team, score_table_t* st, int scor
  * with them are the ones received.
  * Pre 2: The players processes ARE CHILDREN
  * PROCESSES of the process using this court.*/
-court_t* court_create(unsigned int court_id, partners_table_t* pt, score_table_t* st);
+court_t* court_create(unsigned int court_id, partners_table_t* pt, score_table_t* st, tournament_t* tm);
 
 /* Kills the received court and sends flowers
  * to his widow.*/
@@ -118,8 +120,7 @@ unsigned int court_player_to_court_id(court_t* court, unsigned int player_id);
  * relative to this court and returns the player_id. Returns
  * something above TOTAL_PLAYERS in case of error.*/
 unsigned int court_court_id_to_player(court_t* court, unsigned int pc_id);
-
-void court_main(unsigned int court_id, partners_table_t* pt, score_table_t* st);
+void court_main(unsigned int court_id, partners_table_t* pt, score_table_t* st, tournament_t* tm);
 
 /* Returns the sets won by home and away 
  * playes. If court is NULL, let them both 

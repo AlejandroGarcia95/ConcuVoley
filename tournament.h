@@ -3,7 +3,6 @@
 
 #include "lock.h"
 #include "protocol.h"
-#include "player.h"
 
 /*
  * Referee information will now be distributed. Everyone should be able
@@ -11,7 +10,6 @@
  *
  * What specific data is stored here should be defined soon.
  */
-
 
 typedef enum _player_status {
 	TM_P_OUTSIDE,
@@ -29,21 +27,20 @@ typedef enum _court_status {
 
 typedef struct _player_data {
 	int player_pid;
-	char player_name[NAME_MAX_LENGTH];
+	//char player_name[NAME_MAX_LENGTH];
 	p_status player_status;
 } player_data_t;
 
 
 typedef struct _court_data {
 	unsigned int court_players[4];
-	unsigned int court_num_players;
+	int court_num_players;
 	c_status court_status;
 } court_data_t;
 
 typedef struct tournament_data {
 	player_data_t tm_players[TOTAL_PLAYERS];
 	court_data_t tm_courts[TOTAL_COURTS];
-
 	// General stats.
 	unsigned int tm_idle_players;
 	unsigned int tm_active_players;

@@ -6,6 +6,8 @@
 #include <stdbool.h>
 #include "log.h"
 
+#include "tournament.h"	// For tournament_t
+
 #define NAME_MAX_LENGTH 50
 
 #define SKILL_MAX 100
@@ -28,6 +30,8 @@ typedef struct player_ {
 	size_t skill;
 	size_t matches_played;
 	bool currently_playing;
+
+	tournament_t* tm;
 } player_t;
 
 /* Returns the current player singleton!*/
@@ -66,6 +70,6 @@ void player_stop_playing();
 /* Makes player stop playing.*/
 void player_start_playing();
 
-void player_main(unsigned int id);
+void player_main(unsigned int id, tournament_t* tm);
 
 #endif
