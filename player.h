@@ -14,6 +14,12 @@
 #define SKILL_AVG 80
 #define DELTA_SKILL 15
 
+
+#define MAX_SECONDS_RESTING	5	// 5 seconds
+#define LEAVING_PROB		1	// 1%	Leaving the tournament completelly
+#define RESTING_PROB		20	// 20%	Leaving the tournament for a time with distribution ~U(0, MAX_SECONDS_RESTING)
+					//	Should be greater than LEAVING_PROB
+
 /* Third checkpoint major update: From now on, as
  * there will only be one player_t for each player
  * process, player_t struct will become a singleton!*/

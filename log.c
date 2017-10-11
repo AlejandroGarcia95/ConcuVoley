@@ -120,7 +120,6 @@ int log_write(log_level lvl, char* msg, ... ){
 	char* str_lvl;
 	switch(lvl){
 		case INFO_L: 
-		case NONE_L:
 			str_lvl = "INFO";
 			break;
 		case WARNING_L: 
@@ -131,6 +130,8 @@ int log_write(log_level lvl, char* msg, ... ){
 			break;
 		case CRITICAL_L:
 			str_lvl = "CRITICAL";
+			break;
+		default:
 			break;
 		}
 			

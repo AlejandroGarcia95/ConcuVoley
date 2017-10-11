@@ -423,19 +423,33 @@ void player_main(unsigned int id, tournament_t* tm) {
 	int i, r;
 	int attempts = 0;
 	while((player->matches_played < tm->num_matches) && (attempts < MAX_ATTEMPTS)) {
+		unsigned long int prob = rand() % 100;
+		if (prob < LEAVING_PROB) {
+			log_write(INFO_L, "Player %03d: decided to leave the tournament by his own!\n", player->id);
+			break;
+		}
+
+		if (prob < RESTING_PROB) {
+			log_write(INFO_L, "Player %03d: is taking a nap, should be back soon!\n", player->id);
+			unsigned long int t_rest = rand() % MAX_SECONDS_RESTING + 1;
+			sleep(t_rest);
+			log_write(INFO_L, "Player %03d: is back!\n", player->id);
+			continue;
+		}
+
+		log_write(INFO_L, "Player %03d: decided to play!\n", player->id);
 		if (!player_looking_for_court(player))
 			attempts++;
 		else
 			attempts = 0;
 		
 		// Sad end for player: leaves when nobody loves him 
-		if(player->times_kicked == MAX_TIMES_KICKED) {
+		if (player->times_kicked == MAX_TIMES_KICKED) {
 			log_write(INFO_L, "Player %03d: Kicked too many times. Giving up!\n", player->id);
 			break;
-			}
+		}
 		
-		// Wait some time before joining again
-		// TODO: Add a probability to leave beach
+		// Wait some time before doing anything
 		unsigned long int t_rand = rand() % 2000000;
 		usleep(t_rand);
 	}
