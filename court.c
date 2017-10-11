@@ -130,7 +130,32 @@ void manage_players_scores(court_t* court){
 				else
 					court_team_add_score_players(court->team_home, court->tm->tm_data->st, 3);
 				break;
-	}		
+	}
+}
+
+
+void update_player_match_data(court_t* court) {
+	match_data_t md = {};
+	court_team_t team_home = court->team_home;
+	court_team_t team_away = court->team_away;
+
+	md.match_players[0] = team_home.team_players[0];
+	md.match_players[1] = team_home.team_players[1];
+	md.match_players[2] = team_away.team_players[0];
+	md.match_players[3] = team_away.team_players[1];
+	md.match_score[0] = team_home.sets_won;
+	md.match_score[1] = team_away.sets_won;
+	md.match_played_at = court->court_id;
+
+	lock_acquire(court->tm->tm_lock);
+	int i;
+	for (i = 0; i < PLAYERS_PER_MATCH; i++) {
+		int aux = court->tm->tm_data->tm_players[md.match_players[i]].player_num_matches;
+		court->tm->tm_data->tm_players[md.match_players[i]].player_matches[aux] = md;
+		court->tm->tm_data->tm_players[md.match_players[i]].player_num_matches++;
+	}
+	court->tm->tm_data->tm_courts[court->court_id].court_completed_matches++;
+	lock_release(court->tm->tm_lock);
 }
 
 void connect_player_in_team(court_t* court, unsigned int p_id, unsigned int team){
@@ -496,6 +521,7 @@ void court_play(court_t* court){
 		court->tm->tm_data->tm_courts[court->court_id].court_players[i] = INVALID_PLAYER_ID;
 	lock_release(court->tm->tm_lock);
 	
+	update_player_match_data(court);
 	manage_players_scores(court);
 	mark_players_partners(court);
 }

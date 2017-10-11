@@ -414,6 +414,13 @@ void player_main(unsigned int id, tournament_t* tm) {
 	player_set_name(p_name);
 	player->tm = tm;
 	
+	// Registering it's info
+	lock_acquire(player->tm->tm_lock);
+	player->tm->tm_data->tm_players[id].player_num_matches = 0;
+	player->tm->tm_data->tm_players[id].player_pid = getpid();
+	strcpy(player->tm->tm_data->tm_players[id].player_name, p_name);
+	lock_release(player->tm->tm_lock);
+
 	log_write(INFO_L, "Player %03d: Launched as %s using PID: %d\n", player->id, p_name, getpid());
 	log_write(INFO_L, "Player %03d: Player skill is: %d\n", player->id, player_get_skill());
 	

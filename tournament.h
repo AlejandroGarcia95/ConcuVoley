@@ -9,6 +9,10 @@
 #include "confparser.h"
 
 
+// TODO: careful with this!
+#define MAX_NUM_MATCHES 40
+#define NAME_MAX_LENGTH 50
+
 /*
  * Referee information will now be distributed. Everyone should be able
  * to access and modify, previously locking the TDA.
@@ -30,10 +34,20 @@ typedef enum _court_status {
 	TM_C_DISABLED
 } c_status;
 
+
+typedef struct _match_data {
+	int match_players[PLAYERS_PER_MATCH];
+	int match_score[2];
+	int match_played_at;
+} match_data_t;
+
 typedef struct _player_data {
 	int player_pid;
-	//char player_name[NAME_MAX_LENGTH];
+	char player_name[NAME_MAX_LENGTH];
 	p_status player_status;
+
+	match_data_t player_matches[MAX_NUM_MATCHES];
+	int player_num_matches;
 } player_data_t;
 
 
@@ -41,6 +55,9 @@ typedef struct _court_data {
 	unsigned int court_players[PLAYERS_PER_MATCH];
 	int court_num_players;
 	c_status court_status;
+
+	int court_completed_matches;
+	int court_suspended_matches;
 } court_data_t;
 
 typedef struct tournament_data {

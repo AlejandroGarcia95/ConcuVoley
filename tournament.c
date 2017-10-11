@@ -50,11 +50,14 @@ void tournament_init(tournament_t* tm, struct conf sc) {
 	int i, j;
 	for (i = 0; i < sc.players; i++) {
 		tm->tm_data->tm_players[i].player_status = TM_P_IDLE;
+		tm->tm_data->tm_players[i].player_num_matches = 0;
 	}
 
 	for (i = 0; i < MAX_COURTS; i++) {
 		court_data_t cd;
 		cd.court_num_players = 0;
+		cd.court_completed_matches = 0;
+		cd.court_suspended_matches = 0;
 		cd.court_status = TM_C_FREE;
 		for(j = 0; j < PLAYERS_PER_MATCH; j++)
 			cd.court_players[j] = INVALID_PLAYER_ID;

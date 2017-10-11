@@ -183,10 +183,27 @@ void print_tournament_status(tournament_t* tm) {
 }
 
 
+#define PRINTCOLOR
 void print_tournament_results(tournament_t* tm) {
 	lock_acquire(tm->tm_lock);
 	log_write(STAT_L, "Here it would be nice to print useful information about the tournament overall\n");
 
+	int i, j;
+	int color;
+	log_write(STAT_L, "Player information!\n");
+	for (i = 0; i < tm->total_players; i++) {
+		player_data_t pd = tm->tm_data->tm_players[i];
+		color = (pd.player_pid % 20) * 2 + 1;
+		log_write(STAT_L, "\t\x1b[1;38;5;%dm - Player %03d, %s (had pid %d)\n", color, i, pd.player_name, pd.player_pid);
+		log_write(STAT_L, "\t\t\x1b[1;38;5;%dm %d matches finished:\n", color, pd.player_num_matches);
+		for (j = 0; j < pd.player_num_matches; j++) {
+			match_data_t md = pd.player_matches[j];
+			log_write(STAT_L, "\t\t\x1b[1;38;5;%dm %03d & %03d (%d) VS (%d) %03d & %03d at court %03d\n", color,
+					md.match_players[0], md.match_players[1], md.match_score[0],
+					md.match_score[1], md.match_players[2], md.match_players[3], 
+					md.match_played_at);
+		}
+	}
 	lock_release(tm->tm_lock);
 }
 
