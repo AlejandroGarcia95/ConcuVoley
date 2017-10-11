@@ -20,7 +20,7 @@ typedef struct log_ {
 } log_t;
 
 /* Log level specifier for writing to the log. */
-typedef enum log_level_ {NONE_L, INFO_L, WARNING_L, ERROR_L, CRITICAL_L} log_level;
+typedef enum log_level_ {NONE_L, STAT_L, INFO_L, WARNING_L, ERROR_L, CRITICAL_L} log_level;
 
 /* Closes the received log file and destroys the log itself.*/
 void log_close();

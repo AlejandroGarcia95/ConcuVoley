@@ -119,6 +119,9 @@ int log_write(log_level lvl, char* msg, ... ){
 		
 	char* str_lvl;
 	switch(lvl){
+		case STAT_L:
+			str_lvl = "STATS";
+			break;
 		case INFO_L: 
 			str_lvl = "INFO";
 			break;

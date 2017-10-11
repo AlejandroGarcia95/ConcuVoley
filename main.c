@@ -165,6 +165,14 @@ void print_tournament_status(tournament_t* tm) {
 	lock_release(tm->tm_lock);
 }
 
+
+void print_tournament_results(tournament_t* tm) {
+	lock_acquire(tm->tm_lock);
+	log_write(STAT_L, "Here it would be nice to print useful information about the tournament overall\n");
+
+	lock_release(tm->tm_lock);
+}
+
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
  * 
  * 		MAIN DOWN HERE
@@ -257,12 +265,13 @@ int main(int argc, char **argv){
 		}
 	}
 
-	print_tournament_status(tm);
+	log_write(STAT_L, "Main: Tournament ended correctly \\o/\n");
+	print_tournament_results(tm);
+
 	partners_table_free_table(pt);
 	tournament_free(tm);
 	score_table_free_table(st);		
 
-	log_write(INFO_L, "Main: Tournament ended correctly \\o/\n");
 	log_close();
 	return 0;
 }
