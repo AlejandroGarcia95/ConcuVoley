@@ -80,8 +80,9 @@ void court_team_add_score_players(court_team_t team, score_table_t* st, int scor
  * "relative" to this court. If the player_id received doesn't
  * belong to a player on this court, returns something above
  * PLAYERS_PER_MATCH.*/
-unsigned int court_player_to_court_id(court_t* court, unsigned int player_id){
+unsigned int court_player_to_court_id(unsigned int player_id){
 	int i;
+	court_t* court = court_get_instance();
 	court_team_t team0 = court->team_home;
 	for(i = 0; i < PLAYERS_PER_TEAM; i++)
 		if(team0.team_players[i] == player_id)
@@ -97,7 +98,8 @@ unsigned int court_player_to_court_id(court_t* court, unsigned int player_id){
 /* Inverse of the function above. Receives a "player_court_id"
  * relative to this court and returns the player_id. Returns
  * something above players amount in case of error.*/
-unsigned int court_court_id_to_player(court_t* court, unsigned int pc_id){
+unsigned int court_court_id_to_player(unsigned int pc_id){
+	court_t* court = court_get_instance();
 	if(pc_id > PLAYERS_PER_MATCH) return INVALID_PLAYER_ID;
 	court_team_t team = court->team_home;
 	if(pc_id >=  PLAYERS_PER_TEAM) {
@@ -107,7 +109,8 @@ unsigned int court_court_id_to_player(court_t* court, unsigned int pc_id){
 	return team.team_players[pc_id];
 }
 
-void manage_players_scores(court_t* court){
+void manage_players_scores(){
+	court_t* court = court_get_instance();
 	int won_team = (int) (court->team_home.sets_won < court->team_away.sets_won);  
 	log_write(NONE_L, "Court %03d: Team %d won!\n", court->court_id, won_team + 1);
 	// Set scores properly
@@ -134,7 +137,8 @@ void manage_players_scores(court_t* court){
 }
 
 
-void update_player_match_data(court_t* court) {
+void update_player_match_data() {
+	court_t* court = court_get_instance();
 	match_data_t md = {};
 	court_team_t team_home = court->team_home;
 	court_team_t team_away = court->team_away;
@@ -158,7 +162,8 @@ void update_player_match_data(court_t* court) {
 	lock_release(court->tm->tm_lock);
 }
 
-void connect_player_in_team(court_t* court, unsigned int p_id, unsigned int team){
+void connect_player_in_team(unsigned int p_id, unsigned int team){
+	court_t* court = court_get_instance();
 	if(team == 0)
 		court_team_join_player(&court->team_home, p_id);
 	if(team == 1)
@@ -184,12 +189,13 @@ void connect_player_in_team(court_t* court, unsigned int p_id, unsigned int team
  * For kicking the player without accepting, use reject_player. If
  * court_available is true, then the court is marked as free. If not,
  * it's marked as disabled.*/
-void kick_all_players(court_t* court, bool court_available){
+void kick_all_players(bool court_available){
+	court_t* court = court_get_instance();
 	lock_acquire(court->tm->tm_lock);
 	// Kick all players!
 	int i;
 	for(i = 0; i < court->connected_players; i++) {
-		int p_id = court_court_id_to_player(court, i);
+		int p_id = court_court_id_to_player(i);
 		
 		log_write(CRITICAL_L, "Court %03d: Player %03d remained too long, let's kick them!\n", court->court_id, p_id);
 		message_t msg = {};
@@ -216,7 +222,8 @@ void kick_all_players(court_t* court, bool court_available){
 	lock_release(court->tm->tm_lock);
 }
 
-void reject_player(court_t* court, unsigned int p_id) {
+void reject_player(unsigned int p_id) {
+	court_t* court = court_get_instance();
 	lock_acquire(court->tm->tm_lock);
 	log_write(CRITICAL_L, "Court %03d: Player %03d couldn't find a team, we should kick him!!\n", court->court_id, p_id);
 	message_t msg = {};
@@ -239,12 +246,13 @@ void reject_player(court_t* court, unsigned int p_id) {
 	lock_release(court->tm->tm_lock);
 }
 
-void court_self_destruct(court_t* court){
+void court_self_destruct(){
+	court_t* court = court_get_instance();
 	lock_acquire(court->tm->tm_lock);
 	court->tm->tm_data->tm_courts[court->court_id].court_status = TM_C_DISABLED;
 	lock_release(court->tm->tm_lock);
 	
-	kick_all_players(court, false);
+	kick_all_players(false);
 	
 	lock_acquire(court->tm->tm_lock);
 	score_table_print(court->tm->tm_data->st);
@@ -258,7 +266,8 @@ void court_self_destruct(court_t* court){
 
 /* Marks each player's partner on the partners_table
  * stored at court.*/
-void mark_players_partners(court_t* court){
+void mark_players_partners(){
+	court_t* court = court_get_instance();
 	if((!court) || (!court->tm->tm_data->pt)) return;
 	// Mark each players' partner (home)
 	int i, j;
@@ -282,19 +291,20 @@ void mark_players_partners(court_t* court){
  * the player can join the match, this functions accepts them and
  * assign them a team. If the player can't, this function should
  * kick them off!*/
-void handle_player_team(court_t* court, message_t msg){
+void handle_player_team(message_t msg){
+	court_t* court = court_get_instance();
 	static int join_attempts = 0;
 	switch(court->connected_players){
 		case 0: // First player to connect. Instantly accepted on team 0
-			connect_player_in_team(court, msg.m_player_id, 0);
+			connect_player_in_team(msg.m_player_id, 0);
 			join_attempts = 0; // Question for the reader: why is this line important?
 			break;
 		case 1: // Second player to connect.
 			// If can team up with first player, let them do it
 			if(court_team_player_can_join_team(court->team_home ,msg.m_player_id, court->tm->tm_data->pt))
-				connect_player_in_team(court, msg.m_player_id, 0);
+				connect_player_in_team(msg.m_player_id, 0);
 			else // If not, go to other team
-				connect_player_in_team(court, msg.m_player_id, 1);
+				connect_player_in_team(msg.m_player_id, 1);
 			break;
 		default:
 			if(court->connected_players >= PLAYERS_PER_MATCH){
@@ -305,18 +315,18 @@ void handle_player_team(court_t* court, message_t msg){
 			
 			// Check if can join team0
 			if(court_team_player_can_join_team(court->team_home ,msg.m_player_id, court->tm->tm_data->pt))
-				connect_player_in_team(court, msg.m_player_id, 0);
+				connect_player_in_team(msg.m_player_id, 0);
 			// Check if can join team1
 			else if(court_team_player_can_join_team(court->team_away ,msg.m_player_id, court->tm->tm_data->pt))
-				connect_player_in_team(court, msg.m_player_id, 1);
+				connect_player_in_team(msg.m_player_id, 1);
 			else // kick player
-				reject_player(court, msg.m_player_id);
+				reject_player(msg.m_player_id);
 			
 		}
 		
 	join_attempts++;
 	if(join_attempts == JOIN_ATTEMPTS_MAX) {
-		kick_all_players(court, true);
+		kick_all_players(true);
 		join_attempts = 0;
 		}
 }
@@ -325,7 +335,8 @@ void handle_player_team(court_t* court, message_t msg){
 /* Auxiliar function that opens this court's fifo. If fifo was 
  * already opened, silently does nothing.
  * Watch out! open is blocking!*/
-void open_court_fifo(court_t* court){
+void open_court_fifo(){
+	court_t* court = court_get_instance();
 	if (court->court_fifo < 0) {
 		log_write(INFO_L, "Court %03d: Court FIFO is closed, need to open one\n", court->court_id, errno);
 		int court_fifo = open(court->court_fifo_name, O_RDONLY);
@@ -341,15 +352,14 @@ void open_court_fifo(court_t* court){
 // --------------------------------------------------------------
 
 /* Dynamically creates a new court. Returns NULL in failure.
- * Pre 1: The players processes were already created the fifos for communicating with
- * them are the ones received.*/
-court_t* court_create(unsigned int court_id, tournament_t* tm) {
+ * Should only be called by court_get_instance. */
+court_t* court_create() {
 
 	court_t* court = malloc(sizeof(court_t));
 	if (!court) return NULL;
 	
 	court->court_fifo = -1;
-	court->court_id = court_id;
+
 	int i;
 	for (i = 0; i < PLAYERS_PER_MATCH; i++) {
 		court->player_fifos[i] = -1;
@@ -357,19 +367,30 @@ court_t* court_create(unsigned int court_id, tournament_t* tm) {
 
 	court_team_initialize(&court->team_away);
 	court_team_initialize(&court->team_home);
-	court->tm = tm;
 	court->connected_players = 0;
 	return court;
 }
 
 /* Kills the received court and sends flowers
  * to his widow.*/
-void court_destroy(court_t* court){
+void court_destroy(){
+	court_t* court = court_get_instance();
 	partners_table_destroy(court->tm->tm_data->pt);
 	score_table_destroy(court->tm->tm_data->st);
 	tournament_destroy(court->tm);
 	free(court);
 	// Sry, no flowers
+}
+
+/* Returns the current court singleton!*/
+court_t* court_get_instance(){
+	static court_t* court = NULL;
+	// Check if there's already a court
+	if(court)
+		return court;
+	// If not, create it!
+	court = court_create();
+	return court;
 }
 
 /*
@@ -379,7 +400,8 @@ void court_destroy(court_t* court){
  * and calls to court_play.
  * Once court ends, it comes here again.. eager to start another court.
  */
-void court_lobby(court_t* court) {
+void court_lobby() {
+	court_t* court = court_get_instance();
 	log_write(INFO_L, "Court %03d: A new match is about to begin... lobby\n", court->court_id, errno);
 	court->connected_players = 0;
 	court_team_initialize(&court->team_home);
@@ -433,7 +455,7 @@ void court_lobby(court_t* court) {
 					log_write(ERROR_L, "Court %03d: FIFO opening error for player %d fifo [errno: %d]\n", court->court_id, msg.m_player_id, errno);
 				} else {
 					log_write(INFO_L, "Court %03d: Court will handle player %d\n", court->court_id, msg.m_player_id);
-					handle_player_team(court, msg);
+					handle_player_team(msg);
 				}
 			}
 		}
@@ -458,7 +480,8 @@ void court_lobby(court_t* court) {
  * was set on this court creation, this
  * function also closes the fifos file des-
  * criptors at the end of the court. */
-void court_play(court_t* court){
+void court_play(){
+	court_t* court = court_get_instance();
 	int i, j;
 	unsigned long int players_scores[PLAYERS_PER_MATCH] = {0};
 	message_t msg = {};
@@ -488,13 +511,13 @@ void court_play(court_t* court){
 			else {
 				log_write(INFO_L, "Court %03d: Received %d from player %03d\n", court->court_id, msg.m_type, msg.m_player_id);
 				assert(msg.m_type == MSG_PLAYER_SCORE);
-				int pc_id = court_player_to_court_id(court, msg.m_player_id);
+				int pc_id = court_player_to_court_id(msg.m_player_id);
 				players_scores[pc_id] = msg.m_score;
 			}
 		}
 		// Show this set score
 		for(i = 0; i < PLAYERS_PER_MATCH; i++) {
-			int p_id = court_court_id_to_player(court, i);
+			int p_id = court_court_id_to_player(i);
 			log_write(INFO_L, "Court %03d: Player %03d set score: %ld\n", court->court_id, p_id, players_scores[i]);
 			}
 		// Determinate the winner of the set
@@ -533,17 +556,18 @@ void court_play(court_t* court){
 		court->tm->tm_data->tm_courts[court->court_id].court_players[i] = INVALID_PLAYER_ID;
 	lock_release(court->tm->tm_lock);
 	
-	update_player_match_data(court);
-	manage_players_scores(court);
-	mark_players_partners(court);
+	update_player_match_data();
+	manage_players_scores();
+	mark_players_partners();
 }
 
 /* Finish the current set by signaling
  * the players with SIG_SET.*/
-void court_finish_set(court_t* court){
+void court_finish_set(){
+	court_t* court = court_get_instance();
 	int i;
 	for(i = 0; i < PLAYERS_PER_MATCH; i++){
-		int player_id = court_court_id_to_player(court, i);
+		int player_id = court_court_id_to_player(i);
 		if(player_id == INVALID_PLAYER_ID) break;
 		player_data_t pd = court->tm->tm_data->tm_players[player_id];
 		kill(pd.player_pid, SIG_SET);
@@ -553,11 +577,13 @@ void court_finish_set(court_t* court){
 /* Returns the sets won by home and away 
  * playes. If court is NULL, let them both 
  * return 0 for the time being.*/
-size_t court_get_home_sets(court_t* court){
+size_t court_get_home_sets(){
+	court_t* court = court_get_instance();
 	return (court ? court->team_home.sets_won : 0);
 }
 
-size_t court_get_away_sets(court_t* court){
+size_t court_get_away_sets(){
+	court_t* court = court_get_instance();
 	return (court ? court->team_away.sets_won : 0);
 }
 
@@ -568,9 +594,12 @@ void court_main(unsigned int court_id, tournament_t* tm) {
 
 	// Launch a single court, then end the tournament
 	// TODO: refactor this? Make it singleton to handle signals?
-	court_t* court = court_create(court_id, tm);
+	court_t* court = court_get_instance();
 	if(!court)
 		exit(-1);
+	
+	court->court_id	= court_id;
+	court->tm = tm;
 		
 	log_write(INFO_L, "Court %03d: Launched using PID: %d\n", court->court_id, getpid());
 	get_court_fifo_name(court_id, court->court_fifo_name);
