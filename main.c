@@ -41,6 +41,7 @@ int main_init(tournament_t* tm, struct conf sc){
 	// SIG_TIDE signals unless we set it explicitily
 	signal(SIG_SET, SIG_IGN);
 	signal(SIG_TIDE, SIG_IGN);
+	signal(SIGTERM, SIG_IGN);
 	
 	// Create every player FIFO
 	int i;
@@ -90,7 +91,7 @@ int main_init(tournament_t* tm, struct conf sc){
 		return -1;
 	}
 	tm->tm_data->tm_players_sem = sem;
-
+	
 	// Tournament init semaphores
 	sem = sem_get("tournament.c", 2);
 	if (sem < 0) {
@@ -284,7 +285,7 @@ int main(int argc, char **argv){
 	// Lock until at least MIN_PLAYERS_TO_START have posted on the semaphore
 	// (so the tournament starts when that many players have joined)
 	sem_take(sem_start, 0, MIN_PLAYERS_TO_START);
-	sem_put(sem_start, 1, sc.players);
+	sem_put(sem_start, 1, sc.capacity);
 
 	bool courts_waken = false;
 	bool cut_condition = false;
@@ -309,10 +310,12 @@ int main(int argc, char **argv){
 
 		if(cut_condition && (!courts_waken)) {
 			courts_waken = true;
-			log_write(CRITICAL_L, "Main: No more matches can be performed. Waking up courts!.\n");
-			for(j = 0; j < tm->total_courts; j++)
-				sem_post(tm->tm_data->tm_courts_sem, j);
-			//break;
+			log_write(CRITICAL_L, "Main: Enough matches performed. Terminating processes!\n");
+			// Version 1 of ending
+			//for(j = 0; j < tm->total_courts; j++)
+			//	sem_post(tm->tm_data->tm_courts_sem, j);
+			// Version 2 of ending
+			kill(0, SIGTERM);
 		}
 	}
 

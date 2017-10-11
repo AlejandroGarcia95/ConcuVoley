@@ -167,6 +167,25 @@ void handler_players_set(int signum) {
 		player_stop_playing();
 }
 
+// Version 2 of ending
+/* Handler function for SIGTERM signal*/
+void player_handler_termination(int signum) {
+	assert(signum == SIGTERM);
+	player_t* player = player_get_instance();
+	log_write(CRITICAL_L, "Player %03d: No more matches can be played. Player decided to leave the tournament on his own!\n", player->id);
+	player_seppuku(true);
+}
+
+void player_set_termination_handler() {
+	// Set the hanlder for the SIGTERM signal
+	struct sigaction sa;
+	sigset_t sigset;	
+	sigemptyset(&sa.sa_mask);
+	sa.sa_flags = 0;
+	sa.sa_handler = player_handler_termination;
+	sigaction(SIGTERM, &sa, NULL);
+}
+
 void player_set_sigset_handler() {
 	// Set the hanlder for the SIG_SET signal
 	struct sigaction sa;
@@ -413,11 +432,12 @@ void player_main(unsigned int id, tournament_t* tm) {
 	if(!player)
 		player_seppuku(false);
 
+	player_set_termination_handler();
 	player->id = id;
 	player_set_name(p_name);
 	player->tm = tm;
 	
-	// Registering it's info
+	// Registering player info
 	lock_acquire(player->tm->tm_lock);
 	player->tm->tm_data->tm_players[id].player_num_matches = 0;
 	player->tm->tm_data->tm_players[id].player_pid = getpid();
@@ -427,9 +447,9 @@ void player_main(unsigned int id, tournament_t* tm) {
 	log_write(INFO_L, "Player %03d: Launched as %s using PID: %d\n", player->id, p_name, getpid());
 	log_write(INFO_L, "Player %03d: Player skill is: %d\n", player->id, player_get_skill());
 	
-	unsigned long int t_rand = rand() % MAX_SECONDS_OUTSIDE + 0;
-	sleep(t_rand);
-	log_write(INFO_L, "Player %03d: decided to enter the beach\n", player->id);
+//	unsigned long int t_rand = rand() % MAX_SECONDS_OUTSIDE + 0;
+//	sleep(t_rand);
+	log_write(INFO_L, "Player %03d: decided to enter the tournament\n", player->id);
 
 	lock_acquire(tm->tm_lock);
 	int sem_start = tm->tm_data->tm_init_sem;
@@ -438,12 +458,11 @@ void player_main(unsigned int id, tournament_t* tm) {
 	// Post the arrival to the main referee, then wait for the start tournament signal (so exciting!!)
 	sem_post(sem_start, 0);
 	sem_wait(sem_start, 1);
+	lock_acquire(tm->tm_lock);
+	tm->tm_data->tm_on_beach_players++;
+	lock_release(tm->tm_lock);
+	log_write(INFO_L, "Player %03d: Has entered the beach\n", player->id);
 
-	log_write(INFO_L, "Player %03d: entering the tournament\n", player->id);
-
-	// TODO: here player should decide whether to get into the stadium,
-	// leave if its already inside or look for a free court if it
-	// wants to play.
 	int i, r;
 	bool cut_condition = false;
 	int attempts = 0;
@@ -453,31 +472,46 @@ void player_main(unsigned int id, tournament_t* tm) {
 		int players_alive = tm->tm_data->tm_active_players;
 		lock_release(tm->tm_lock);
 		
+		// Version 1 of ending
 		// Different cut condition based on player amount
 		// Totally empirical, must be the same as in main
-		if(tm->total_players > 20)
+		/*if(tm->total_players > 20)
 			cut_condition = (players_alive <= (tm->total_players * 0.2));
 		else
 			cut_condition = (players_alive < 4);
 			
 		if(cut_condition)
 			break;
+		*/
 		
 		unsigned long int prob = rand() % 100;
 		if (prob < LEAVING_PROB) {
-			log_write(INFO_L, "Player %03d: decided to leave the tournament by his own!\n", player->id);
+			log_write(INFO_L, "Player %03d: Decided to leave the tournament on his own!\n", player->id);
+			sem_post(sem_start, 1);
+			lock_acquire(tm->tm_lock);
+			tm->tm_data->tm_on_beach_players--;
+			lock_release(tm->tm_lock);
 			break;
 		}
 
 		if (prob < RESTING_PROB) {
-			log_write(INFO_L, "Player %03d: is taking a nap, should be back soon!\n", player->id);
-			unsigned long int t_rest = rand() % MAX_SECONDS_RESTING + 1;
-			sleep(t_rest);
-			log_write(INFO_L, "Player %03d: is back!\n", player->id);
+			log_write(INFO_L, "Player %03d: Decided to leave the beach!\n", player->id);
+			sem_post(sem_start, 1);
+			lock_acquire(tm->tm_lock);
+			tm->tm_data->tm_on_beach_players--;
+			lock_release(tm->tm_lock);
+			unsigned long int t_rest = rand() % MAX_TIME_RESTING + 1000;
+			usleep(t_rest);
+			log_write(INFO_L, "Player %03d: Is back, wanting to enter the beach\n", player->id);
+			sem_wait(sem_start, 1);
+			lock_acquire(tm->tm_lock);
+			tm->tm_data->tm_on_beach_players++;
+			lock_release(tm->tm_lock);
+			log_write(INFO_L, "Player %03d: Has re-entered the beach successfully\n", player->id);
 			continue;
 		}
 
-		log_write(INFO_L, "Player %03d: decided to play!\n", player->id);
+		log_write(INFO_L, "Player %03d: Decided to play!\n", player->id);
 		if (!player_looking_for_court(player))
 			attempts++;
 		else
@@ -494,8 +528,10 @@ void player_main(unsigned int id, tournament_t* tm) {
 		usleep(t_rand);
 	}
 	
+	sem_post(sem_start, 1);
 	lock_acquire(player->tm->tm_lock);
 	player->tm->tm_data->tm_active_players--;
+	tm->tm_data->tm_on_beach_players--;
 	lock_release(player->tm->tm_lock);
 
 	log_write(INFO_L, "Player %03d: Now leaving\n", player->id);

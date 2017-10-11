@@ -16,9 +16,9 @@
 
 
 #define MAX_SECONDS_OUTSIDE	20	// Up to 20 seconds before entering for the first time
-#define MAX_SECONDS_RESTING	5	// 5 seconds
-#define LEAVING_PROB		4	// 1%	Leaving the tournament completelly
-#define RESTING_PROB		20	// 20%	Leaving the tournament for a time with distribution ~U(0, MAX_SECONDS_RESTING)
+#define MAX_TIME_RESTING	5000000	// 5 seconds
+#define LEAVING_PROB		2	// 2%	Leaving the tournament completelly
+#define RESTING_PROB		15	// 15%	Leaving the tournament for a time with distribution ~U(0, MAX_SECONDS_RESTING)
 					//	Should be greater than LEAVING_PROB
 
 /* Third checkpoint major update: From now on, as

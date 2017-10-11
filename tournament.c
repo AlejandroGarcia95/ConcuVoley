@@ -65,6 +65,7 @@ void tournament_init(tournament_t* tm, struct conf sc) {
 	}
 
 	tm->tm_data->tm_active_players = sc.players;
+	tm->tm_data->tm_on_beach_players = 0;
 	tm->tm_data->tm_idle_courts = (sc.rows * sc.cols);
 
 	tm->tm_data->tm_players_sem = -1;

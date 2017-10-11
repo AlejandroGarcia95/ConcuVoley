@@ -31,6 +31,7 @@ typedef enum _court_status {
 	TM_C_FREE,
 	TM_C_LOBBY,
 	TM_C_BUSY,
+	TM_C_FLOODED,
 	TM_C_DISABLED
 } c_status;
 
@@ -65,7 +66,7 @@ typedef struct tournament_data {
 	player_data_t tm_players[MAX_PLAYERS];
 	court_data_t tm_courts[MAX_COURTS];
 	// General stats.
-	unsigned int tm_idle_players;
+	unsigned int tm_on_beach_players;
 	unsigned int tm_active_players;
 
 	unsigned int tm_idle_courts;

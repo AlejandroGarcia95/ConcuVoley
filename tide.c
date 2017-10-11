@@ -102,6 +102,7 @@ void tide_main(tournament_t* tm, struct conf sc){
 
 	tide_destroy();
 	tournament_destroy(tm);
+	log_write(INFO_L, "Tide: Finished process!\n");
 	log_close();
 	exit(0);
 }

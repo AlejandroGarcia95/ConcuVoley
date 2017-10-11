@@ -12,8 +12,8 @@ C : 3
 // K defines number of matches (former NUM_MATCHES)
 K : 4
 // M defines the beach capacity
-M : 18
+M : 26
 // P defines amount of players (former TOTAL_PLAYERS)
-P : 19
+P : 56
 // Set D in order to activate debug mode
 D : 1

@@ -205,12 +205,14 @@ void kick_all_players(bool court_available){
 			log_write(ERROR_L, "Court %03d: Failed to send reject msg to player %03d [errno: %d]\n", court->court_id, p_id, errno);
 			exit(-1);	// TODO: don't bail, just revert changes
 		}
-		close(court->player_fifos[i]);
+		if(court->player_fifos[i] > 0)
+			close(court->player_fifos[i]);
 	}
 	court->connected_players = 0;
 	court_team_initialize(&court->team_home);
 	court_team_initialize(&court->team_away);
-	close(court->court_fifo);
+	if(court->court_fifo > 0)
+		close(court->court_fifo);
 	court->court_fifo = -1;
 	for (i = 0; i < PLAYERS_PER_MATCH; i++) 
 		court->player_fifos[i] = -1;
@@ -251,7 +253,8 @@ void court_self_destruct(){
 	lock_acquire(court->tm->tm_lock);
 	court->tm->tm_data->tm_courts[court->court_id].court_status = TM_C_DISABLED;
 	lock_release(court->tm->tm_lock);
-	
+	// If there were players inside, let'em go
+	court_finish_set();
 	kick_all_players(false);
 	
 	lock_acquire(court->tm->tm_lock);
@@ -262,6 +265,46 @@ void court_self_destruct(){
 	log_close();
 	
 	exit(0);
+}
+
+
+/* Handler function for SIG_TIDE signal*/
+void court_handler_tide(int signum) {
+	assert(signum == SIG_TIDE);
+	court_t* court = court_get_instance();
+	/* TODO: Check if self court status has changed
+	to TM_C_FLOODED. If so, court_finish_set and
+	kick_all_players.*/
+}
+
+void court_set_tide_handler() {
+	// Set the hanlder for the SIG_TIDE signal
+	struct sigaction sa;
+	sigset_t sigset;	
+	sigemptyset(&sa.sa_mask);
+	sa.sa_flags = 0;
+	sa.sa_handler = court_handler_tide;
+	sigaction(SIG_TIDE, &sa, NULL);
+}
+
+
+// Version 2 of ending
+/* Handler function for SIGTERM signal*/
+void court_handler_termination(int signum) {
+	assert(signum == SIGTERM);
+	court_t* court = court_get_instance();
+	log_write(CRITICAL_L, "Court %03d: No more matches can be played. Self-destruct protocol started.\n", court->court_id);
+	court_self_destruct();
+}
+
+void court_set_termination_handler() {
+	// Set the hanlder for the SIGTERM signal
+	struct sigaction sa;
+	sigset_t sigset;	
+	sigemptyset(&sa.sa_mask);
+	sa.sa_flags = 0;
+	sa.sa_handler = court_handler_termination;
+	sigaction(SIGTERM, &sa, NULL);
 }
 
 /* Marks each player's partner on the partners_table
@@ -418,6 +461,8 @@ void court_lobby() {
 		
 		// Different cut condition based on player amount
 		// Totally empirical, must be the same as in main
+		// Version 1 of ending
+		/*
 		if(court->tm->total_players > 20)
 			cut_condition = (players_alive <= (court->tm->total_players * 0.2));
 		else
@@ -428,7 +473,7 @@ void court_lobby() {
 			court_self_destruct(court);
 			assert(false);
 		}
-
+		*/
 		// Now court is in the "empty" state, waiting for new connections
 		open_court_fifo(court);
 		log_write(INFO_L, "Court %03d: Court awaiting connections\n", court->court_id, errno);
@@ -588,13 +633,14 @@ size_t court_get_away_sets(){
 }
 
 
-
+// TODO: Disable court if it's no longer necessary
+// Obs: Court with id "i" will be no longer needed if 
+// tm_active_players <= PLAYERS_PER_MATCH * i
+// (court ids starting at 0)
 
 void court_main(unsigned int court_id, tournament_t* tm) {
-
-	// Launch a single court, then end the tournament
-	// TODO: refactor this? Make it singleton to handle signals?
 	court_t* court = court_get_instance();
+	court_set_termination_handler();
 	if(!court)
 		exit(-1);
 	
@@ -604,8 +650,9 @@ void court_main(unsigned int court_id, tournament_t* tm) {
 	log_write(INFO_L, "Court %03d: Launched using PID: %d\n", court->court_id, getpid());
 	get_court_fifo_name(court_id, court->court_fifo_name);
 
-	while(1){ // Court never finishes on its own: always available for playing
+	while(1){ 
 		court_lobby(court);
+		// Disable court here
 	}
 
 }
