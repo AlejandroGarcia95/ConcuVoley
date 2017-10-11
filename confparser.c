@@ -54,7 +54,7 @@ bool read_conf_file(struct conf* sc){
 	// For every line in pf, parse its value
 	while(r > 0){
 		char param[15];
-		size_t p_value;
+		size_t p_value = 0;
 		r = fscanf(pf, "%s : %d\n", param, &p_value);
 		if(r == 2) {
 			parse_value(sc, param, p_value);

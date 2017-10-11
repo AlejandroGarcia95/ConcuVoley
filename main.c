@@ -177,7 +177,7 @@ int main(int argc, char **argv){
 	// otherwise, you don't know where you are going."
 	pid_t main_pid = getpid();
 	
-	struct conf sc;
+	struct conf sc = {};
 	if(!read_conf_file(&sc)){
 		printf("FATAL: Error parsing configuration file [errno: %d]\n", errno);
 		return -1;		
@@ -247,12 +247,13 @@ int main(int argc, char **argv){
 		lock_acquire(tm->tm_lock);
 		int players_alive = tm->tm_data->tm_active_players;
 		lock_release(tm->tm_lock);
+
 		if((players_alive < 4) && (!courts_waken)) {
 			courts_waken = true;
 			log_write(CRITICAL_L, "Main: No more matches can be performed. Waking up courts!.\n");
 			for(j = 0; j < tm->total_courts; j++)
 				sem_post(tm->tm_data->tm_courts_sem, j);
-			break;
+			//break;
 		}
 	}
 

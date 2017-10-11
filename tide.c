@@ -92,7 +92,7 @@ void tide_main(tournament_t* tm, struct conf sc){
 	// For every line in pf, parse its value
 	while(r > 0){
 		char param[15];
-		unsigned long int t_value;
+		unsigned long int t_value = 0;
 		r = fscanf(tide->pf, "%s : %lu\n", param, &t_value);
 		if(r == 2) {
 			tide_parse_command(sc, param, t_value, tm);
