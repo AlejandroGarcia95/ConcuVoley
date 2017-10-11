@@ -78,7 +78,7 @@ int main_init(tournament_t* tm, struct conf sc){
 	}
 	tm->tm_data->tm_courts_sem = sem;
 
-	// PLayers semaphores
+	// Players semaphores
 	sem = sem_get("player.c", sc.players);
 	if (sem < 0) {
 		log_write(ERROR_L, "Main: Error creating semaphore [errno: %d]\n", errno);
@@ -90,6 +90,23 @@ int main_init(tournament_t* tm, struct conf sc){
 		return -1;
 	}
 	tm->tm_data->tm_players_sem = sem;
+
+	// Tournament init semaphores
+	sem = sem_get("tournament.c", 2);
+	if (sem < 0) {
+		log_write(ERROR_L, "Main: Error creating semaphore [errno: %d]\n", errno);
+		return -1;
+	}
+	log_write(INFO_L, "Main: Got semaphore %d with name %s\n", sem, "tournament.c");
+	if (sem_init(sem, 0, 0) < 0) {
+		log_write(ERROR_L, "Main: Error initializing the semaphore [errno: %d]\n", errno);
+		return -1;
+	}
+	if (sem_init(sem, 1, 0) < 0) {
+		log_write(ERROR_L, "Main: Error initializing the semaphore [errno: %d]\n", errno);
+		return -1;
+	}
+	tm->tm_data->tm_init_sem = sem;
 }
 
 /* Launches a new process which will assume a
@@ -242,6 +259,15 @@ int main(int argc, char **argv){
 		assert(false);
 		// Sanity check
 	}
+
+	lock_acquire(tm->tm_lock);
+	int sem_start = tm->tm_data->tm_init_sem;
+	lock_release(tm->tm_lock);
+
+	// Lock until at least MIN_PLAYERS_TO_START have posted on the semaphore
+	// (so the tournament starts when that many players have joined)
+	sem_take(sem_start, 0, MIN_PLAYERS_TO_START);
+	sem_put(sem_start, 1, sc.players);
 
 	bool courts_waken = false;
 

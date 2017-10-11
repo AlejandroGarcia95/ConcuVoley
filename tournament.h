@@ -56,6 +56,7 @@ typedef struct tournament_data {
 
 	int tm_players_sem;
 	int tm_courts_sem;
+	int tm_init_sem;
 	
 	partners_table_t* pt;
 	score_table_t* st;

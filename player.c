@@ -417,6 +417,20 @@ void player_main(unsigned int id, tournament_t* tm) {
 	log_write(INFO_L, "Player %03d: Launched as %s using PID: %d\n", player->id, p_name, getpid());
 	log_write(INFO_L, "Player %03d: Player skill is: %d\n", player->id, player_get_skill());
 	
+	unsigned long int t_rand = rand() % MAX_SECONDS_OUTSIDE + 0;
+	sleep(t_rand);
+	log_write(INFO_L, "Player %03d: decided to enter the beach\n", player->id);
+
+	lock_acquire(tm->tm_lock);
+	int sem_start = tm->tm_data->tm_init_sem;
+	lock_release(tm->tm_lock);
+
+	// Post the arrival to the main referee, then wait for the start tournament signal (so exciting!!)
+	sem_post(sem_start, 0);
+	sem_wait(sem_start, 1);
+
+	log_write(INFO_L, "Player %03d: entering the tournament\n", player->id);
+
 	// TODO: here player should decide whether to get into the stadium,
 	// leave if its already inside or look for a free court if it
 	// wants to play.

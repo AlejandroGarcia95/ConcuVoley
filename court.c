@@ -532,7 +532,6 @@ void court_main(unsigned int court_id, tournament_t* tm) {
 	get_court_fifo_name(court_id, court->court_fifo_name);
 
 	while(1){ // Court never finishes on its own: always available for playing
-		// Warning reading on a shared memory without locking!
 		court_lobby(court);
 	}
 

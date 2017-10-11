@@ -22,6 +22,7 @@
 // TODO: Change this for dynamic memory
 #define MAX_COURTS 200
 #define MAX_PLAYERS 200
+#define MIN_PLAYERS_TO_START 10
 #define INVALID_PLAYER_ID (MAX_PLAYERS + 8)
 
 #define PLAYERS_PER_MATCH 4

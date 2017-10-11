@@ -66,6 +66,7 @@ void tournament_init(tournament_t* tm, struct conf sc) {
 
 	tm->tm_data->tm_players_sem = -1;
 	tm->tm_data->tm_courts_sem = -1;
+	tm->tm_data->tm_init_sem = -1;
 	tm->tm_data->pt = NULL;
 	tm->tm_data->st = NULL;
 	
