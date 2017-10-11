@@ -91,6 +91,8 @@ void tournament_free(tournament_t* tm) {
 		sem_destroy(tm->tm_data->tm_players_sem);
 	if (tm->tm_data->tm_courts_sem >= 0)
 		sem_destroy(tm->tm_data->tm_courts_sem);
+	if (tm->tm_data->tm_init_sem >= 0)
+		sem_destroy(tm->tm_data->tm_init_sem);
 		
 	int shmid = tm->tm_shmid;
 	tournament_destroy(tm);
