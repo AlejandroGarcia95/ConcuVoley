@@ -24,12 +24,12 @@ void parse_value(struct conf* sc, char* param, size_t p_value){
 		return;
 		}
 		
-	if(strcmp(param, "C") == 0) {
+	if(strcmp(param, "D") == 0) {
 		sc->debug = (p_value == 0 ? false : true);
 		return;
 		}		
 		
-	if(strcmp(param, "D") == 0) {
+	if(strcmp(param, "C") == 0) {
 		sc->cols = p_value;
 		return;
 		}				
