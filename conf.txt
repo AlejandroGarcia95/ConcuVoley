@@ -6,14 +6,14 @@ for config. parse to work. The format is:
 (where the two spaces and the end of line are compulsory!)
 Also note the order for the parameters is irrelevant.*/
 // F defines rows
-F : 2
+F : 3
 // C defines columns. Note F*C defines amount of courts (former TOTAL_COURTS)
-C : 2
+C : 3
 // K defines number of matches (former NUM_MATCHES)
 K : 4
 // M defines the beach capacity
 M : 18
 // P defines amount of players (former TOTAL_PLAYERS)
-P : 16
+P : 24
 // Set D in order to activate debug mode
 D : 1

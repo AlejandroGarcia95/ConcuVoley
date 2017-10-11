@@ -18,8 +18,8 @@
 #include "tournament.h"
 
 // In microseconds!
-#define MIN_SCORE_TIME 10000
-#define MAX_SCORE_TIME 30000
+#define MIN_SCORE_TIME 900
+#define MAX_SCORE_TIME 3000
 
 #define MAX_ATTEMPTS 10
 
@@ -241,10 +241,12 @@ void player_at_court(player_t* player, int court_fifo, int player_fifo) {
 		} else {
 			log_write(INFO_L, "Player %03d: wont start playing, received message %d\n", player->id, msg.m_type);
 			miss_count++;
-			if (miss_count >= 100) {
+			if (miss_count >= 2) {
 				// Have to really praise you for this
-				log_write(CRITICAL_L, "Player %03d: Have to shut down; wont start playing too many times (maybe deadlock)\n", player->id);
-				player_seppuku(true);
+				//log_write(CRITICAL_L, "Player %03d: Have to shut down; wont start playing too many times (maybe deadlock)\n", player->id);
+				//player_seppuku(true);
+				log_write(INFO_L, "Player %03d: Kicked from previously accepted court\n", player->id);
+				player->times_kicked++;
 			}
 		}
 	}
@@ -354,6 +356,7 @@ bool player_looking_for_court(player_t* player) {
 	// Search for a free court
 	int court_id = -1;
 	lock_acquire(player->tm->tm_lock);
+	
 	int i;
 	int best_so_far = -1;
 	int best_num_players = -1;
@@ -377,8 +380,8 @@ bool player_looking_for_court(player_t* player) {
 			cd.court_status = TM_C_BUSY;
 		player->tm->tm_data->tm_courts[best_so_far] = cd;
 		court_id = best_so_far;
-		log_write(CRITICAL_L, "Player %03d: Incremented court_num_players of court %03d, value is at %d\n", 
-						player->id, court_id, player->tm->tm_data->tm_courts[court_id].court_num_players);
+		//log_write(CRITICAL_L, "Player %03d: Incremented court_num_players of court %03d, value is at %d\n", 
+		//				player->id, court_id, player->tm->tm_data->tm_courts[court_id].court_num_players);
 	}
 	lock_release(player->tm->tm_lock);
 
@@ -442,8 +445,24 @@ void player_main(unsigned int id, tournament_t* tm) {
 	// leave if its already inside or look for a free court if it
 	// wants to play.
 	int i, r;
+	bool cut_condition = false;
 	int attempts = 0;
 	while((player->matches_played < tm->num_matches) && (attempts < MAX_ATTEMPTS)) {
+		
+		lock_acquire(tm->tm_lock);
+		int players_alive = tm->tm_data->tm_active_players;
+		lock_release(tm->tm_lock);
+		
+		// Different cut condition based on player amount
+		// Totally empirical, must be the same as in main
+		if(tm->total_players > 20)
+			cut_condition = (players_alive <= (tm->total_players * 0.2));
+		else
+			cut_condition = (players_alive < 4);
+			
+		if(cut_condition)
+			break;
+		
 		unsigned long int prob = rand() % 100;
 		if (prob < LEAVING_PROB) {
 			log_write(INFO_L, "Player %03d: decided to leave the tournament by his own!\n", player->id);

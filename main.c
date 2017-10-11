@@ -287,6 +287,7 @@ int main(int argc, char **argv){
 	sem_put(sem_start, 1, sc.players);
 
 	bool courts_waken = false;
+	bool cut_condition = false;
 
 	for (i = 0; i < (sc.players + tm->total_courts + 1); i++) {
 		int status;
@@ -299,7 +300,14 @@ int main(int argc, char **argv){
 		int players_alive = tm->tm_data->tm_active_players;
 		lock_release(tm->tm_lock);
 
-		if((players_alive < 4) && (!courts_waken)) {
+		// Different cut condition based on player amount
+		// Totally empirical, must be the same as in court and player
+		if(sc.players > 20)
+			cut_condition = (players_alive <= (sc.players * 0.2));
+		else
+			cut_condition = (players_alive < 4);
+
+		if(cut_condition && (!courts_waken)) {
 			courts_waken = true;
 			log_write(CRITICAL_L, "Main: No more matches can be performed. Waking up courts!.\n");
 			for(j = 0; j < tm->total_courts; j++)

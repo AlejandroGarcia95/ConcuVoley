@@ -18,8 +18,8 @@
 #include "protocol.h"
 
 // In microseconds!
-#define SET_MAX_DURATION 2000000 
-#define SET_MIN_DURATION 300000 
+#define SET_MAX_DURATION 200000
+#define SET_MIN_DURATION 70000 
 
 
 // --------------- Court team section --------------
@@ -181,8 +181,10 @@ void connect_player_in_team(court_t* court, unsigned int p_id, unsigned int team
 /* Kicks every player from the court. This function should be used when
  * the players on the court have been alread accepted on the court (i.e.
  * they were accepted and remained too long, hence should be kicked).
- * For kicking the player without accepting, use reject_player.*/
-void kick_all_players(court_t* court){
+ * For kicking the player without accepting, use reject_player. If
+ * court_available is true, then the court is marked as free. If not,
+ * it's marked as disabled.*/
+void kick_all_players(court_t* court, bool court_available){
 	lock_acquire(court->tm->tm_lock);
 	// Kick all players!
 	int i;
@@ -207,7 +209,7 @@ void kick_all_players(court_t* court){
 	for (i = 0; i < PLAYERS_PER_MATCH; i++) 
 		court->player_fifos[i] = -1;
 			
-	court->tm->tm_data->tm_courts[court->court_id].court_status = TM_C_FREE;
+	court->tm->tm_data->tm_courts[court->court_id].court_status = (court_available ? TM_C_FREE : TM_C_DISABLED);
 	court->tm->tm_data->tm_courts[court->court_id].court_num_players = 0;
 	for(i = 0; i < PLAYERS_PER_MATCH; i++)
 		court->tm->tm_data->tm_courts[court->court_id].court_players[i] = INVALID_PLAYER_ID;
@@ -238,17 +240,19 @@ void reject_player(court_t* court, unsigned int p_id) {
 }
 
 void court_self_destruct(court_t* court){
-	kick_all_players(court);
-	score_table_print(court->tm->tm_data->st);
-
-	log_write(INFO_L, "Court %03d: Destroying court\n", court->court_id);
-	
 	lock_acquire(court->tm->tm_lock);
 	court->tm->tm_data->tm_courts[court->court_id].court_status = TM_C_DISABLED;
 	lock_release(court->tm->tm_lock);
-
+	
+	kick_all_players(court, false);
+	
+	lock_acquire(court->tm->tm_lock);
+	score_table_print(court->tm->tm_data->st);
+	log_write(INFO_L, "Court %03d: Destroying court\n", court->court_id);
+	lock_release(court->tm->tm_lock);
 	court_destroy(court);
 	log_close();
+	
 	exit(0);
 }
 
@@ -312,7 +316,7 @@ void handle_player_team(court_t* court, message_t msg){
 		
 	join_attempts++;
 	if(join_attempts == JOIN_ATTEMPTS_MAX) {
-		kick_all_players(court);
+		kick_all_players(court, true);
 		join_attempts = 0;
 		}
 }
@@ -381,6 +385,7 @@ void court_lobby(court_t* court) {
 	court_team_initialize(&court->team_home);
 	court_team_initialize(&court->team_away);
 	message_t msg = {};
+	bool cut_condition = false;
 
 	while (court->connected_players < PLAYERS_PER_MATCH) {
 		sem_wait(court->tm->tm_data->tm_courts_sem, court->court_id);
@@ -389,7 +394,14 @@ void court_lobby(court_t* court) {
 		int players_alive = court->tm->tm_data->tm_active_players;
 		lock_release(court->tm->tm_lock);
 		
-		if(players_alive < 4) {
+		// Different cut condition based on player amount
+		// Totally empirical, must be the same as in main
+		if(court->tm->total_players > 20)
+			cut_condition = (players_alive <= (court->tm->total_players * 0.2));
+		else
+			cut_condition = (players_alive < 4);
+		
+		if(cut_condition) {
 			log_write(CRITICAL_L, "Court %03d: No more matches can be played. Self-destruct protocol started.\n", court->court_id);
 			court_self_destruct(court);
 			assert(false);
@@ -529,7 +541,13 @@ void court_play(court_t* court){
 /* Finish the current set by signaling
  * the players with SIG_SET.*/
 void court_finish_set(court_t* court){
-	kill(0, SIG_SET);
+	int i;
+	for(i = 0; i < PLAYERS_PER_MATCH; i++){
+		int player_id = court_court_id_to_player(court, i);
+		if(player_id == INVALID_PLAYER_ID) break;
+		player_data_t pd = court->tm->tm_data->tm_players[player_id];
+		kill(pd.player_pid, SIG_SET);
+	}
 }
 
 /* Returns the sets won by home and away 
