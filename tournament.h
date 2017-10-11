@@ -64,6 +64,7 @@ typedef struct tournament_data {
 typedef struct tournament {
 	size_t total_players;
 	size_t total_courts;
+	size_t num_matches;
 	int tm_shmid;
 	tournament_data_t *tm_data;
 	lock_t *tm_lock;

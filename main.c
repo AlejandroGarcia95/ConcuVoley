@@ -23,6 +23,7 @@
 #include "semaphore.h"
 #include "score_table.h"
 #include "tournament.h"
+#include "tide.h"
 
 /* Returns negative in case of error!*/
 int main_init(tournament_t* tm, struct conf sc){
@@ -32,11 +33,14 @@ int main_init(tournament_t* tm, struct conf sc){
 		printf("FATAL: No log could be opened!\n");
 		return -1;
 	}
+	log_set_debug_mode(sc.debug);
+	
 	log_write(INFO_L, "Main: Self pid is %d\n", getpid());
 	
-	// We want processes to ignore SIG_SET signal unless
-	// we set it explicitily
+	// We want processes to ignore SIG_SET and
+	// SIG_TIDE signals unless we set it explicitily
 	signal(SIG_SET, SIG_IGN);
+	signal(SIG_TIDE, SIG_IGN);
 	
 	// Create every player FIFO
 	int i;
@@ -102,7 +106,7 @@ int launch_player(unsigned int player_id, tournament_t* tm) {
 	pid_t pid = fork();
 
 	if (pid < 0) { // Error
-		log_write(ERROR_L, "Main: Fork failed!\n");
+		log_write(CRITICAL_L, "Main: Fork failed!\n");
 		return -1;
 	} else if (pid == 0) { // Son aka player
 		player_main(player_id, tm);
@@ -113,7 +117,6 @@ int launch_player(unsigned int player_id, tournament_t* tm) {
 
 
 
-// TODO: make so it is not necesary to pass pointer to partners table
 int launch_court(unsigned int court_id, tournament_t* tm) {
 	log_write(INFO_L, "Main: Launching court %03d!\n", court_id);
 
@@ -121,16 +124,29 @@ int launch_court(unsigned int court_id, tournament_t* tm) {
 	pid_t pid = fork();
 
 	if (pid < 0) { // Error
-		log_write(ERROR_L, "Main: Fork failed!\n");
+		log_write(CRITICAL_L, "Main: Fork failed!\n");
 		return -1;
 	} else if (pid == 0) { // Son aka court
 		court_main(court_id, tm);
 		assert(false); // Should not return!
 	}
 	return 0;
-
 }
 
+int launch_tide(tournament_t* tm, struct conf sc) {
+	log_write(INFO_L, "Main: Launching tide process!\n");
+
+	pid_t pid = fork();
+
+	if (pid < 0) { // Error
+		log_write(CRITICAL_L, "Main: Fork failed!\n");
+		return -1;
+	} else if (pid == 0) { // Son aka tide
+		tide_main(tm, sc);
+		assert(false); // Should not return!
+	}
+	return 0;
+}
 
 
 // Debug only!
@@ -188,16 +204,19 @@ int main(int argc, char **argv){
 		launch_player(i, tm);
 	}
 	
+	// Launch tide
+	launch_tide(tm, sc);
+	
 	// Create table of partners
 	partners_table_t* pt = partners_table_create(sc.players);
 	if(!pt) {
-		log_write(ERROR_L, "Main: Error creating partners table [errno: %d]\n", errno);
+		log_write(CRITICAL_L, "Main: Error creating partners table [errno: %d]\n", errno);
 	}
 
 	// Create score table
 	score_table_t* st = score_table_create(sc.players);
 	if(!st) {
-		log_write(ERROR_L, "Main: Error creating score table [errno: %d]\n", errno);
+		log_write(CRITICAL_L, "Main: Error creating score table [errno: %d]\n", errno);
 	}
 
 	tournament_set_tables(tm, pt, st);
@@ -218,7 +237,7 @@ int main(int argc, char **argv){
 
 	bool courts_waken = false;
 
-	for (i = 0; i < (sc.players + tm->total_courts); i++) {
+	for (i = 0; i < (sc.players + tm->total_courts + 1); i++) {
 		int status;
 		int pid = wait(&status);
 		int ret = WEXITSTATUS(status);

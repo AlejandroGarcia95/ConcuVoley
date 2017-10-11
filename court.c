@@ -440,7 +440,6 @@ void court_play(court_t* court){
 		
 		// Let the set last 6 seconds for now. After that, the
 		// main process will make all players stop
-		// TODO: Change this for something random!
 		unsigned long int t_rand = rand() % (SET_MAX_DURATION - SET_MIN_DURATION);
 		usleep(t_rand + SET_MIN_DURATION);
 		court_finish_set(court);
@@ -530,38 +529,11 @@ void court_main(unsigned int court_id, tournament_t* tm) {
 		exit(-1);
 		
 	log_write(INFO_L, "Court %03d: Launched using PID: %d\n", court->court_id, getpid());
-
 	get_court_fifo_name(court_id, court->court_fifo_name);
-	// Como es un semaphore set.. se pueden crear de un saque todos lo semáforos!
-	//int sem = sem_get(court->court_fifo_name, 1);
-	//if (sem < 0)
-	///	log_write(ERROR_L, "Court %03d: Error creating semaphore [errno: %d]\n", court->court_id, errno);
 
-	//log_write(INFO_L, "Court %03d: Got semaphore %d with name %s!!\n", court->court_id, sem, court->court_fifo_name);
-	//	if (sem_put(sem, 0, 4) < 0) {
-	//		log_write(ERROR_L, "Court %03d: Error initializing the semaphore [errno: %d]\n", court->court_id, errno);
-	//		exit(-1);
-	//	}
-
-	int i;
-	// TODO: Change for a 'graceful quit'
-	//for (i = 0; i < COURT_LIFE; i++) {
-	while(1){ // I'm evil Aleeee
+	while(1){ // Court never finishes on its own: always available for playing
 		// Warning reading on a shared memory without locking!
 		court_lobby(court);
 	}
 
-/*	score_table_print(court->tm->tm_data->st);
-
-	log_write(INFO_L, "Court %03d: Destroying court\n", court->court_id);
-	
-	lock_acquire(court->tm->tm_lock);
-	court->tm->tm_data->tm_courts[court->court_id].court_status = TM_C_DISABLED;
-	lock_release(court->tm->tm_lock);
-
-	court_destroy(court);
-	//sem_destroy(sem);
-	log_close();
-	exit(0);
-*/
 }

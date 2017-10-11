@@ -314,7 +314,7 @@ void player_join_court(player_t* player, unsigned int court_id) {
 	if (msg.m_type == MSG_MATCH_ACCEPT) {
 		player_at_court(player, court_fifo, my_fifo);
 	} else {
-		log_write(ERROR_L, "Player %03d: Player was rejected\n", player->id);
+		log_write(INFO_L, "Player %03d: Player was rejected\n", player->id);
 		player->times_kicked++;
 	}
 	player_unset_sigset_handler();
@@ -331,7 +331,6 @@ void player_join_court(player_t* player, unsigned int court_id) {
 	log_write(INFO_L, "Player %03d: Released semaphore\n", player->id);
 
 }
-
 
 
 /*
@@ -423,7 +422,7 @@ void player_main(unsigned int id, tournament_t* tm) {
 	// wants to play.
 	int i, r;
 	int attempts = 0;
-	while(player->matches_played < NUM_MATCHES && attempts < MAX_ATTEMPTS) {
+	while((player->matches_played < tm->num_matches) && (attempts < MAX_ATTEMPTS)) {
 		if (!player_looking_for_court(player))
 			attempts++;
 		else
@@ -431,7 +430,7 @@ void player_main(unsigned int id, tournament_t* tm) {
 		
 		// Sad end for player: leaves when nobody loves him 
 		if(player->times_kicked == MAX_TIMES_KICKED) {
-			log_write(ERROR_L, "Player %03d: Kicked too many times. Giving up!\n", player->id);
+			log_write(INFO_L, "Player %03d: Kicked too many times. Giving up!\n", player->id);
 			break;
 			}
 		

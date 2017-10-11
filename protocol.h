@@ -12,9 +12,11 @@
 #include "protocol.h"
 
 // Temporary
-#define NUM_MATCHES 7
 
-#define MAX_TIMES_KICKED (NUM_MATCHES * 4)
+#define MAX_TIMES_KICKED 10
+
+#define SIG_SET SIGUSR1
+#define SIG_TIDE SIGUSR2
 
 // Numbre of player id which will be invalid
 // TODO: Change this for dynamic memory

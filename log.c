@@ -8,16 +8,6 @@
 #include "log.h"
 
 
-
-/* Important comment about the log: La consigna dice que debería
- * tener un "modo debug" y que los mensajes de debug sólo se deberían
- * imprimir en ese modo... Es decir, habría que agregar un flag en
- * el log_open y que en el log_write sólo imprima los mensajes de E,W,I
- * si el flag está en 1
- * */
-
-// TODO: Add a lock to this (just uncomment the locks calls)
-
 /* Auxiliar function that creates a pretty-printeable
  * time string. The final string is stored at str.*/
 void get_time_string(log_t* log, char* str){
@@ -54,6 +44,7 @@ log_t* log_open(char* route, bool append){
 	gettimeofday (&time_start, NULL);
 	
 	log->time_created = time_start;
+	log->debug = false;
 	
 	log->lock = lock_create("log");
 	if(!log->lock) {
@@ -82,11 +73,19 @@ void log_close(){
 	if(log && log->log_file)
 		fclose(log->log_file);
 		
-	// lock_destroy(log->lock);	
 	if(log) {
 		lock_destroy(log->lock);
 		free(log);
 	}
+}
+
+/* Enables or disables "debug mode" for log depending on the
+ * value received in set_debug. Only NONE_L log level strings
+ * will be written if debug mode is off.*/
+void log_set_debug_mode(bool set_debug){
+	log_t* log = log_get_instance();
+	if(log)
+		log->debug = set_debug;
 }
 
 /* Write string msg to the received log file, using the log
@@ -96,6 +95,10 @@ void log_close(){
 int log_write(log_level lvl, char* msg, ... ){
 	log_t* log = log_get_instance();	
 	if(!(log && log->log_file)) return -1;
+	
+	if((!log->debug) && (lvl != NONE_L))
+		return -1;
+		
 	lock_acquire(log->lock);
 	fflush(log->log_file);
 	
@@ -114,8 +117,6 @@ int log_write(log_level lvl, char* msg, ... ){
 		return 0;
 	}
 		
-	// TODO: Add colors maybe? \x1b[32m \x1b[37;1
-	// Strongly agree to it
 	char* str_lvl;
 	switch(lvl){
 		case INFO_L: 

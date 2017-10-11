@@ -17,8 +17,6 @@
 
 #define JOIN_ATTEMPTS_MAX (PLAYERS_PER_MATCH + 3) // 3 "wrong attempts" before kicking everyone
 
-#define SIG_SET SIGUSR1
-
 /* Structure for modelling each team playing on the court. */
 typedef struct court_team_ {
 	unsigned int team_players[PLAYERS_PER_TEAM];

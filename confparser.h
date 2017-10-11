@@ -16,9 +16,10 @@ struct conf {
 	size_t matches;
 	size_t capacity;
 	size_t players;
+	bool debug;
 };
 
-/* Stores the value of the parameter recieved
+/* Stores the value of the parameter received
  * into the respective field of struct conf sc.*/
 void parse_value(struct conf* sc, char* param, size_t p_value);
 

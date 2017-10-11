@@ -71,6 +71,7 @@ void tournament_init(tournament_t* tm, struct conf sc) {
 	
 	tm->total_players = sc.players;
 	tm->total_courts = (sc.rows * sc.cols);
+	tm->num_matches = sc.matches;
 }
 
 void tournament_destroy(tournament_t* tm) {

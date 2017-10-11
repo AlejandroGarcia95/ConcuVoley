@@ -9,9 +9,11 @@ Also note the order for the parameters is irrelevant.*/
 F : 2
 // C defines columns. Note F*C defines amount of courts (former TOTAL_COURTS)
 C : 2
-// K defines number of matches
-K : 9
+// K defines number of matches (former NUM_MATCHES)
+K : 4
 // M defines the beach capacity
 M : 18
 // P defines amount of players (former TOTAL_PLAYERS)
-P : 18
+P : 16
+// Set D in order to activate debug mode
+D : 1
