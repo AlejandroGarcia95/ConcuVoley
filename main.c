@@ -200,7 +200,7 @@ void print_tournament_status(tournament_t* tm) {
 #define PRINTCOLOR
 void print_tournament_results(tournament_t* tm) {
 	lock_acquire(tm->tm_lock);
-	log_write(STAT_L, "Here it would be nice to print useful information about the tournament overall\n");
+	log_write(STAT_L, "Useful information about the tournament overall\n");
 
 	int i, j;
 	int color;
@@ -218,6 +218,23 @@ void print_tournament_results(tournament_t* tm) {
 					md.match_played_at);
 		}
 	}
+
+	// TODO: Yo creo que si agregamos algunas stats como las de abajo (que son contadores, nada más)
+	//	 les va a gustar más nuestro tp.
+
+	log_write(STAT_L, "Matchs completed: 000000\n");
+	log_write(STAT_L, "Matchs suspended by tides: 00000\n");
+	log_write(STAT_L, "Player with most wins: 00000\n");
+	log_write(STAT_L, "Most skilled player: 00000\n");
+	log_write(STAT_L, "Least skilled player: 00000\n");
+	log_write(STAT_L, "Most used court: 00000\n");
+
+	log_write(STAT_L, "\nLeaderboard (top 10 players)\n");
+
+
+	log_write(STAT_L, "\x1b[5m CONGRATULATIONS PLAYER X FOR WINNING\n");
+	
+
 	lock_release(tm->tm_lock);
 }
 
@@ -233,6 +250,7 @@ int main(int argc, char **argv){
 	// otherwise, you don't know where you are going."
 	pid_t main_pid = getpid();
 	
+
 	struct conf sc = {};
 	if(!read_conf_file(&sc)){
 		printf("FATAL: Error parsing configuration file [errno: %d]\n", errno);
@@ -308,7 +326,7 @@ int main(int argc, char **argv){
 		int pid = wait(&status);
 		int ret = WEXITSTATUS(status);
 		log_write(INFO_L, "Main: Proccess pid %d finished with exit status %d\n", pid, ret);
-		print_tournament_status(tm);
+		//print_tournament_status(tm);
 		
 		lock_acquire(tm->tm_lock);
 		int players_alive = tm->tm_data->tm_active_players;
@@ -323,7 +341,7 @@ int main(int argc, char **argv){
 
 		if(cut_condition && (!courts_waken)) {
 			courts_waken = true;
-			log_write(CRITICAL_L, "Main: Enough matches performed. Terminating processes!\n");
+			log_write(INFO_L, "Main: Enough matches performed. Terminating processes!\n");
 			// Version 1 of ending
 			//for(j = 0; j < tm->total_courts; j++)
 			//	sem_post(tm->tm_data->tm_courts_sem, j);

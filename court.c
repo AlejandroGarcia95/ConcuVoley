@@ -112,7 +112,7 @@ unsigned int court_court_id_to_player(unsigned int pc_id){
 void manage_players_scores(){
 	court_t* court = court_get_instance();
 	int won_team = (int) (court->team_home.sets_won < court->team_away.sets_won);  
-	log_write(NONE_L, "Court %03d: Team %d won!\n", court->court_id, won_team + 1);
+	log_write(INFO_L, "Court %03d: Team %d won!\n", court->court_id, won_team + 1);
 	// Set scores properly
 	switch(court->team_home.sets_won){
 		case 0:
@@ -198,9 +198,9 @@ void kick_all_players(bool court_available){
 		int p_id = court_court_id_to_player(i);
 		
 		if (court->flooded)
-			log_write(CRITICAL_L, "Court %03d: Player %03d is kicked due to court flooding!\n", court->court_id, p_id);
+			log_write(INFO_L, "Court %03d: Player %03d is kicked due to court flooding!\n", court->court_id, p_id);
 		else
-			log_write(CRITICAL_L, "Court %03d: Player %03d remained too long, let's kick them!\n", court->court_id, p_id);
+			log_write(INFO_L, "Court %03d: Player %03d remained too long, let's kick them!\n", court->court_id, p_id);
 
 		message_t msg = {};
 		msg.m_player_id = p_id;
@@ -234,7 +234,7 @@ void kick_all_players(bool court_available){
 void reject_player(unsigned int p_id) {
 	court_t* court = court_get_instance();
 	lock_acquire(court->tm->tm_lock);
-	log_write(CRITICAL_L, "Court %03d: Player %03d couldn't find a team, we should kick him!!\n", court->court_id, p_id);
+	log_write(INFO_L, "Court %03d: Player %03d couldn't find a team, we should kick him!!\n", court->court_id, p_id);
 	message_t msg = {};
 	msg.m_player_id = p_id;
 	msg.m_type = MSG_MATCH_REJECT;
@@ -266,7 +266,7 @@ void court_self_destruct(){
 	
 	lock_acquire(court->tm->tm_lock);
 	score_table_print(court->tm->tm_data->st);
-	log_write(INFO_L, "Court %03d: Destroying court\n", court->court_id);
+	log_write(DEBUG_L, "Court %03d: Destroying court\n", court->court_id);
 	lock_release(court->tm->tm_lock);
 	court_destroy(court);
 	log_close();
@@ -308,7 +308,7 @@ void court_set_tide_handler() {
 void court_handler_termination(int signum) {
 	assert(signum == SIGTERM);
 	court_t* court = court_get_instance();
-	log_write(CRITICAL_L, "Court %03d: No more matches can be played. Self-destruct protocol started.\n", court->court_id);
+	log_write(INFO_L, "Court %03d: No more matches can be played. Self-destruct protocol started.\n", court->court_id);
 	court_self_destruct();
 }
 
@@ -396,9 +396,9 @@ void handle_player_team(message_t msg){
 void open_court_fifo(){
 	court_t* court = court_get_instance();
 	if (court->court_fifo < 0) {
-		log_write(INFO_L, "Court %03d: Court FIFO is closed, need to open one\n", court->court_id, errno);
+		log_write(DEBUG_L, "Court %03d: Court FIFO is closed, need to open one\n", court->court_id, errno);
 		int court_fifo = open(court->court_fifo_name, O_RDONLY);
-		log_write(INFO_L, "Court %03d: Court FIFO opened!!!\n", court->court_id, errno);
+		log_write(DEBUG_L, "Court %03d: Court FIFO opened!!!\n", court->court_id, errno);
 		if (court_fifo < 0) {
 			log_write(ERROR_L, "Court %03d: FIFO opening error [errno: %d]\n", court->court_id, errno);
 			exit(-1);
@@ -460,7 +460,7 @@ court_t* court_get_instance(){
  */
 void court_lobby() {
 	court_t* court = court_get_instance();
-	log_write(INFO_L, "Court %03d: A new match is about to begin... lobby\n", court->court_id, errno);
+	log_write(INFO_L, "Court %03d: A new match is about to begin... (starting lobby)\n", court->court_id, errno);
 	court->connected_players = 0;
 	court_team_initialize(&court->team_home);
 	court_team_initialize(&court->team_away);
@@ -512,7 +512,7 @@ void court_lobby() {
 			court->court_fifo = -1;
 		} else {
 			if (msg.m_type != MSG_PLAYER_JOIN_REQ) {
-				log_write(ERROR_L, "Court %03d: Received a non-request-to-join msg\n", court->court_id);
+				log_write(ERROR_L, "Court %03d: Received a non-request-to-join msg from Player %03d\n", court->court_id, msg.m_player_id);
 				close(court->court_fifo); // Why aborting instead of just ignoring the msg?
 				court->court_fifo = -1;
 			} else {
@@ -536,7 +536,7 @@ void court_lobby() {
 	if (!court->flooded) {
 		court_play(court);
 	} else {
-		log_write(ERROR_L, "Court %03d: flooded before starting match\n", court->court_id);
+		log_write(ERROR_L, "Court %03d: Flooded before starting match\n", court->court_id);
 		kick_all_players(court);
 	}
 
@@ -575,7 +575,7 @@ void court_play(){
 
 		msg.m_type = MSG_SET_START;
 
-		log_write(NONE_L, "Court %03d: Set %d started!\n", court->court_id, j+1);
+		log_write(INFO_L, "Court %03d: Set %d started!\n", court->court_id, j+1);
 		// Here we make the four players play a set by  
 		// sending them a message through the pipe.  
 		// Change later for a better message protocol.
@@ -601,7 +601,7 @@ void court_play(){
 			if(!receive_msg(court->court_fifo, &msg)) {
 				log_write(ERROR_L, "Court %03d: Error reading score from player %03d [errno: %d]\n", court->court_id, i, errno);
 			} else {
-				log_write(INFO_L, "Court %03d: Received %d from player %03d\n", court->court_id, msg.m_type, msg.m_player_id);
+				log_write(DEBUG_L, "Court %03d: Received %d from player %03d\n", court->court_id, msg.m_type, msg.m_player_id);
 				assert(msg.m_type == MSG_PLAYER_SCORE);
 				int pc_id = court_player_to_court_id(msg.m_player_id);
 				players_scores[pc_id] = msg.m_score;
@@ -610,7 +610,7 @@ void court_play(){
 		// Show this set score
 		for(i = 0; i < PLAYERS_PER_MATCH; i++) {
 			int p_id = court_court_id_to_player(i);
-			log_write(INFO_L, "Court %03d: Player %03d set score: %ld\n", court->court_id, p_id, players_scores[i]);
+			log_write(DEBUG_L, "Court %03d: Player %03d set score: %ld\n", court->court_id, p_id, players_scores[i]);
 		}
 
 		// Determinate the winner of the set
@@ -621,7 +621,7 @@ void court_play(){
 		for (i = PLAYERS_PER_TEAM; i < PLAYERS_PER_MATCH; i++) 
 			score_away += players_scores[i];
 
-		log_write(INFO_L, "Court %03d: This set ended (team 1, team 2): %d - %d\n", court->court_id, score_home, score_away);
+		log_write(INFO_L, "Court %03d: Set %d ended (team 1, team 2): %d - %d\n", court->court_id, j, score_home, score_away);
 
 		if (score_home > score_away)
 			court->team_home.sets_won++;
@@ -688,7 +688,7 @@ size_t court_get_away_sets(){
 }
 
 
-// TODO: Disable court if it's no longer necessary
+// TODO: Disable court if it's no longer necessary??
 // Obs: Court with id "i" will be no longer needed if 
 // tm_active_players <= PLAYERS_PER_MATCH * i
 // (court ids starting at 0)
@@ -709,14 +709,14 @@ void court_main(unsigned int court_id, tournament_t* tm) {
 	court->flood_sem = tm->tm_data->tm_courts_flood_sem;
 	lock_release(tm->tm_lock);
 		
-	log_write(INFO_L, "Court %03d: Launched using PID: %d\n", court->court_id, getpid());
+	log_write(DEBUG_L, "Court %03d: Launched using PID: %d\n", court->court_id, getpid());
 	get_court_fifo_name(court_id, court->court_fifo_name);
 
 	while(1){ 
 		if (court->flooded) {
-			log_write(ERROR_L, "Court %03d: it's flooded!! Waiting till water goes down\n", court_id);
+			log_write(DEBUG_L, "Court %03d: It's flooded!! Waiting till water goes down\n", court_id);
 			sem_wait(court->flood_sem, court_id);
-			log_write(ERROR_L, "Court %03d: water went down\n", court_id);
+			log_write(DEBUG_L, "Court %03d: Water went down\n", court_id);
 		}
 
 		court_lobby(court);

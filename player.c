@@ -172,7 +172,7 @@ void handler_players_set(int signum) {
 void player_handler_termination(int signum) {
 	assert(signum == SIGTERM);
 	player_t* player = player_get_instance();
-	log_write(CRITICAL_L, "Player %03d: No more matches can be played. Player decided to leave the tournament on his own!\n", player->id);
+	log_write(INFO_L, "Player %03d: No more matches can be played. Player decided to leave the tournament on his own!\n", player->id);
 	player_seppuku(true);
 }
 
@@ -258,7 +258,7 @@ void player_at_court(player_t* player, int court_fifo, int player_fifo) {
 			player->times_kicked++;
 			return;
 		} else {
-			log_write(INFO_L, "Player %03d: wont start playing, received message %d\n", player->id, msg.m_type);
+			log_write(INFO_L, "Player %03d: Wont start playing, received message %d\n", player->id, msg.m_type);
 			miss_count++;
 			if (miss_count >= 2) {
 				// Have to really praise you for this
@@ -284,7 +284,7 @@ void player_join_court(player_t* player, unsigned int court_id) {
 	sem_post(player->tm->tm_data->tm_courts_sem, court_id);
 
 	player_set_sigset_handler();
-	// log_write(INFO_L, "Player %03d: Took semaphore %d\n", player->id, sem);
+	log_write(DEBUG_L, "Player %03d: Took semaphore of court %03d\n", player->id, court_id);
 
 	// Joining lobby!!
 	char* p_name;
@@ -295,7 +295,7 @@ void player_join_court(player_t* player, unsigned int court_id) {
 		log_write(ERROR_L, "Player %03d: FIFO opening error for court %03d [errno: %d]\n", player->id, court_id, errno);
 		player_seppuku(true);
 	}
-	log_write(INFO_L, "Player %03d: Opened court %03d FIFO\n", player->id, court_id);
+	log_write(DEBUG_L, "Player %03d: Opened court %03d FIFO\n", player->id, court_id);
 
 	// Send "I want to play" message
 	message_t msg = {};
@@ -318,7 +318,7 @@ void player_join_court(player_t* player, unsigned int court_id) {
 		log_write(ERROR_L, "Player %03d: FIFO opening error for player [errno: %d]\n", player->id, errno);
 		player_seppuku(true);
 	}
-	log_write(INFO_L, "Player %03d: Opened self FIFO\n", player->id);
+	log_write(DEBUG_L, "Player %03d: Opened self FIFO\n", player->id);
 
 	// If accepted join court
 	if(!receive_msg(my_fifo, &msg)) {
@@ -326,6 +326,7 @@ void player_join_court(player_t* player, unsigned int court_id) {
 		player_seppuku(true);
 	}
 	// Received a msg!!
+	// TODO: qiq???
 	bool qiq = ((msg.m_type == MSG_MATCH_ACCEPT) || (msg.m_type == MSG_MATCH_REJECT));
 	if(!qiq) {
 		log_write(CRITICAL_L, "Player %03d: Message was %d\n", player->id, msg.m_type);
@@ -335,7 +336,7 @@ void player_join_court(player_t* player, unsigned int court_id) {
 	if (msg.m_type == MSG_MATCH_ACCEPT) {
 		player_at_court(player, court_fifo, my_fifo);
 	} else {
-		log_write(INFO_L, "Player %03d: Player was rejected\n", player->id);
+		log_write(INFO_L, "Player %03d: Player was rejected from Court %03d\n", player->id, court_id);
 		player->times_kicked++;
 	}
 	player_unset_sigset_handler();
@@ -349,7 +350,7 @@ void player_join_court(player_t* player, unsigned int court_id) {
 	// Release semaphore
 	// if (sem_post(sem, 0) < 0)
 	//	log_write(ERROR_L, "Player %03d: Error taking semaphore [errno: %d]\n", player->id, errno);
-	log_write(INFO_L, "Player %03d: Released semaphore\n", player->id);
+	log_write(DEBUG_L, "Player %03d: Released semaphore of court %03d\n", player->id, court_id);
 
 }
 
@@ -539,7 +540,6 @@ void player_main(unsigned int id, tournament_t* tm) {
 	log_close();
 	exit(0);
 	return; 
-	// Beware! Returns to main!
 }
 
 

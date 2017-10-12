@@ -28,21 +28,24 @@ tide_t* tide_create(){
 
 /* Handles the flowing of the tide*/
 void tide_flow(tournament_t* tm, struct conf sc){
-	log_write(INFO_L, "Tide: Flowing!\n");
 
 	// Disable (if possible) sc.rows courts and signal them
 	lock_acquire(tm->tm_lock);
+	int actual_tide = tm->tm_data->tm_tide_lvl;
+	log_write(INFO_L, "Tide: Flowing! (tide level: %d -> %d)\n", actual_tide, ((actual_tide+1) > (sc.rows) ? sc.rows : actual_tide));
+
 	tm->tm_data->tm_tide_lvl++;
 	if (tm->tm_data->tm_tide_lvl > sc.rows)
 		tm->tm_data->tm_tide_lvl = sc.rows;
 
 	int i;
 	for (i = 0; i < tm->total_courts; i++) {
+		int prev_state = tm->tm_data->tm_courts[i].court_status;
 		if ((i % sc.rows) == tm->tm_data->tm_tide_lvl) {
 			tm->tm_data->tm_courts[i].court_status = TM_C_FLOODED;
 			kill(tm->tm_data->tm_courts[i].court_pid, SIG_TIDE);
 		}
-		log_write(STAT_L, "Court %03d is in state %d\n", i, tm->tm_data->tm_courts[i].court_status);
+		log_write(STAT_L, "Court %03d is in state %d (previously %d)\n", i, tm->tm_data->tm_courts[i].court_status, prev_state);
 	}
 	print_tournament_status(tm);
 	lock_release(tm->tm_lock);
@@ -51,17 +54,19 @@ void tide_flow(tournament_t* tm, struct conf sc){
 
 /* Handles the ebbing of the tide*/
 void tide_ebb(tournament_t* tm, struct conf sc){
-	log_write(INFO_L, "Tide: Ebbing!\n");
 	// Enable (if possible) sc.rows courts
 	lock_acquire(tm->tm_lock);
+	int actual_tide = tm->tm_data->tm_tide_lvl;
+	log_write(INFO_L, "Tide: Ebbing! (tide level: %d -> %d)\n", actual_tide, ((actual_tide-1) < 0 ? -1 : actual_tide));
 
 	int i;
 	for (i = 0; i < tm->total_courts; i++) {
+		int prev_state = tm->tm_data->tm_courts[i].court_status;
 		if ((i % sc.rows) == tm->tm_data->tm_tide_lvl) {
 			tm->tm_data->tm_courts[i].court_status = TM_C_FREE;
 			kill(tm->tm_data->tm_courts[i].court_pid, SIG_TIDE);
 		}
-		log_write(STAT_L, "Court %03d is in state %d\n", i, tm->tm_data->tm_courts[i].court_status);
+		log_write(STAT_L, "Court %03d is in state %d\n", i, tm->tm_data->tm_courts[i].court_status, prev_state);
 	}
 	print_tournament_status(tm);
 
