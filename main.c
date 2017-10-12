@@ -79,6 +79,19 @@ int main_init(tournament_t* tm, struct conf sc){
 	}
 	tm->tm_data->tm_courts_sem = sem;
 
+	// Court flood semaphores
+	sem = sem_get("tide.c", (sc.rows * sc.cols));
+	if (sem < 0) {
+		log_write(ERROR_L, "Main: Error creating semaphore [errno: %d]\n", errno);
+		return -1;
+	}
+	log_write(INFO_L, "Main: Got semaphore %d with name %s\n", sem, "court.c");
+	if (sem_init_all(sem, (sc.rows * sc.cols), 0) < 0) {
+		log_write(ERROR_L, "Main: Error initializing the semaphore [errno: %d]\n", errno);
+		return -1;
+	}
+	tm->tm_data->tm_courts_flood_sem = sem;
+
 	// Players semaphores
 	sem = sem_get("player.c", sc.players);
 	if (sem < 0) {

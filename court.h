@@ -38,6 +38,9 @@ typedef struct court_ {
 	char court_fifo_name[MAX_FIFO_NAME_LEN];
 	bool close_pipes; 
 
+	bool flooded;
+	int flood_sem;
+
 	court_team_t team_home; // team 0
 	court_team_t team_away; // team 1
 	uint8_t connected_players;

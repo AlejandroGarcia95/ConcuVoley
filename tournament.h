@@ -54,6 +54,7 @@ typedef struct _player_data {
 
 typedef struct _court_data {
 	unsigned int court_players[PLAYERS_PER_MATCH];
+	int court_pid;
 	int court_num_players;
 	c_status court_status;
 
@@ -74,7 +75,11 @@ typedef struct tournament_data {
 
 	int tm_players_sem;
 	int tm_courts_sem;
+	int tm_courts_flood_sem;
+	
 	int tm_init_sem;
+
+	int tm_tide_lvl;
 	
 	partners_table_t* pt;
 	score_table_t* st;

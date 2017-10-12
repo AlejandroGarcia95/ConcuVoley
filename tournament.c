@@ -59,6 +59,7 @@ void tournament_init(tournament_t* tm, struct conf sc) {
 		cd.court_completed_matches = 0;
 		cd.court_suspended_matches = 0;
 		cd.court_status = TM_C_FREE;
+		cd.court_pid = -1;
 		for(j = 0; j < PLAYERS_PER_MATCH; j++)
 			cd.court_players[j] = INVALID_PLAYER_ID;
 		tm->tm_data->tm_courts[i] = cd;
@@ -73,6 +74,7 @@ void tournament_init(tournament_t* tm, struct conf sc) {
 	tm->tm_data->tm_init_sem = -1;
 	tm->tm_data->pt = NULL;
 	tm->tm_data->st = NULL;
+	tm->tm_data->tm_tide_lvl = -1;
 	
 	tm->total_players = sc.players;
 	tm->total_courts = (sc.rows * sc.cols);
@@ -97,6 +99,8 @@ void tournament_free(tournament_t* tm) {
 		sem_destroy(tm->tm_data->tm_courts_sem);
 	if (tm->tm_data->tm_init_sem >= 0)
 		sem_destroy(tm->tm_data->tm_init_sem);
+	if (tm->tm_data->tm_courts_flood_sem >= 0)
+		sem_destroy(tm->tm_data->tm_courts_flood_sem);
 		
 	int shmid = tm->tm_shmid;
 	tournament_destroy(tm);

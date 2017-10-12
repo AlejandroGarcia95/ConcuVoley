@@ -2,11 +2,14 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
+#include <signal.h>
 #include "tide.h"
 #include "tournament.h"
+#include "lock.h"
 #include "confparser.h"
 #include "log.h"
 
+void print_tournament_status(tournament_t* tm);
 
 /* Dynamically creates new tide.*/
 tide_t* tide_create(){	
@@ -26,14 +29,47 @@ tide_t* tide_create(){
 /* Handles the flowing of the tide*/
 void tide_flow(tournament_t* tm, struct conf sc){
 	log_write(INFO_L, "Tide: Flowing!\n");
-	// TODO: Disable (if possible) sc.rows courts and signal them
+
+	// Disable (if possible) sc.rows courts and signal them
+	lock_acquire(tm->tm_lock);
+	tm->tm_data->tm_tide_lvl++;
+	if (tm->tm_data->tm_tide_lvl > sc.rows)
+		tm->tm_data->tm_tide_lvl = sc.rows;
+
+	int i;
+	for (i = 0; i < tm->total_courts; i++) {
+		if ((i % sc.rows) == tm->tm_data->tm_tide_lvl) {
+			tm->tm_data->tm_courts[i].court_status = TM_C_FLOODED;
+			kill(tm->tm_data->tm_courts[i].court_pid, SIG_TIDE);
+		}
+		log_write(STAT_L, "Court %03d is in state %d\n", i, tm->tm_data->tm_courts[i].court_status);
+	}
+	print_tournament_status(tm);
+	lock_release(tm->tm_lock);
 	// with SIG_TIDE signal to make them kick players
 }
 
 /* Handles the ebbing of the tide*/
 void tide_ebb(tournament_t* tm, struct conf sc){
 	log_write(INFO_L, "Tide: Ebbing!\n");
-	// TODO: Enable (if possible) sc.rows courts
+	// Enable (if possible) sc.rows courts
+	lock_acquire(tm->tm_lock);
+
+	int i;
+	for (i = 0; i < tm->total_courts; i++) {
+		if ((i % sc.rows) == tm->tm_data->tm_tide_lvl) {
+			tm->tm_data->tm_courts[i].court_status = TM_C_FREE;
+			kill(tm->tm_data->tm_courts[i].court_pid, SIG_TIDE);
+		}
+		log_write(STAT_L, "Court %03d is in state %d\n", i, tm->tm_data->tm_courts[i].court_status);
+	}
+	print_tournament_status(tm);
+
+	tm->tm_data->tm_tide_lvl--;
+	if (tm->tm_data->tm_tide_lvl < 0)
+		tm->tm_data->tm_tide_lvl = -1;
+
+	lock_release(tm->tm_lock);
 }
 
 /* Parses current read line from tide file. If the line

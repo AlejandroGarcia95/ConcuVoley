@@ -115,24 +115,24 @@ void manage_players_scores(){
 	log_write(NONE_L, "Court %03d: Team %d won!\n", court->court_id, won_team + 1);
 	// Set scores properly
 	switch(court->team_home.sets_won){
-			case 0:
-			case 1:
-				assert(court->team_away.sets_won == 3);
-				court_team_add_score_players(court->team_away, court->tm->tm_data->st, 3);
-				break;
-			case 2:
-				assert(court->team_away.sets_won == 3);
-				court_team_add_score_players(court->team_away, court->tm->tm_data->st, 2);
-				court_team_add_score_players(court->team_home, court->tm->tm_data->st, 1);
-				break;
-			case 3:
-				if(court->team_away.sets_won == 2){
-					court_team_add_score_players(court->team_away, court->tm->tm_data->st, 1);
-					court_team_add_score_players(court->team_home, court->tm->tm_data->st, 2);
-				}
-				else
-					court_team_add_score_players(court->team_home, court->tm->tm_data->st, 3);
-				break;
+		case 0:
+		case 1:
+			assert(court->team_away.sets_won == 3);
+			court_team_add_score_players(court->team_away, court->tm->tm_data->st, 3);
+			break;
+		case 2:
+			assert(court->team_away.sets_won == 3);
+			court_team_add_score_players(court->team_away, court->tm->tm_data->st, 2);
+			court_team_add_score_players(court->team_home, court->tm->tm_data->st, 1);
+			break;
+		case 3:
+			if(court->team_away.sets_won == 2){
+				court_team_add_score_players(court->team_away, court->tm->tm_data->st, 1);
+				court_team_add_score_players(court->team_home, court->tm->tm_data->st, 2);
+			}
+			else
+				court_team_add_score_players(court->team_home, court->tm->tm_data->st, 3);
+			break;
 	}
 }
 
@@ -197,7 +197,11 @@ void kick_all_players(bool court_available){
 	for(i = 0; i < court->connected_players; i++) {
 		int p_id = court_court_id_to_player(i);
 		
-		log_write(CRITICAL_L, "Court %03d: Player %03d remained too long, let's kick them!\n", court->court_id, p_id);
+		if (court->flooded)
+			log_write(CRITICAL_L, "Court %03d: Player %03d is kicked due to court flooding!\n", court->court_id, p_id);
+		else
+			log_write(CRITICAL_L, "Court %03d: Player %03d remained too long, let's kick them!\n", court->court_id, p_id);
+
 		message_t msg = {};
 		msg.m_player_id = p_id;
 		msg.m_type = MSG_MATCH_REJECT;
@@ -214,10 +218,13 @@ void kick_all_players(bool court_available){
 	if(court->court_fifo > 0)
 		close(court->court_fifo);
 	court->court_fifo = -1;
+
 	for (i = 0; i < PLAYERS_PER_MATCH; i++) 
 		court->player_fifos[i] = -1;
 			
-	court->tm->tm_data->tm_courts[court->court_id].court_status = (court_available ? TM_C_FREE : TM_C_DISABLED);
+	if (!court->flooded)
+		court->tm->tm_data->tm_courts[court->court_id].court_status = (court_available ? TM_C_FREE : TM_C_DISABLED);
+
 	court->tm->tm_data->tm_courts[court->court_id].court_num_players = 0;
 	for(i = 0; i < PLAYERS_PER_MATCH; i++)
 		court->tm->tm_data->tm_courts[court->court_id].court_players[i] = INVALID_PLAYER_ID;
@@ -266,7 +273,7 @@ void court_self_destruct(){
 	
 	exit(0);
 }
-
+		
 
 /* Handler function for SIG_TIDE signal*/
 void court_handler_tide(int signum) {
@@ -275,6 +282,14 @@ void court_handler_tide(int signum) {
 	/* TODO: Check if self court status has changed
 	to TM_C_FLOODED. If so, court_finish_set and
 	kick_all_players.*/
+
+	tournament_t* tm = court->tm;
+	if (tm->tm_data->tm_courts[court->court_id].court_status == TM_C_FLOODED) {
+		court->flooded = true;
+	} else {
+		court->flooded = false;
+		sem_post(court->flood_sem, court->court_id);
+	}
 }
 
 void court_set_tide_handler() {
@@ -397,7 +412,6 @@ void open_court_fifo(){
 /* Dynamically creates a new court. Returns NULL in failure.
  * Should only be called by court_get_instance. */
 court_t* court_create() {
-
 	court_t* court = malloc(sizeof(court_t));
 	if (!court) return NULL;
 	
@@ -411,6 +425,7 @@ court_t* court_create() {
 	court_team_initialize(&court->team_away);
 	court_team_initialize(&court->team_home);
 	court->connected_players = 0;
+	court->flooded = false;
 	return court;
 }
 
@@ -453,7 +468,19 @@ void court_lobby() {
 	bool cut_condition = false;
 
 	while (court->connected_players < PLAYERS_PER_MATCH) {
+		if (court->flooded) {
+			log_write(ERROR_L, "Court %03d: flooded on kicking everybody before semaphore\n", court->court_id);
+			kick_all_players(false);
+			return;
+		}
+		
 		sem_wait(court->tm->tm_data->tm_courts_sem, court->court_id);
+
+		if (court->flooded) {
+			log_write(ERROR_L, "Court %03d: flooded on kicking everybody\n", court->court_id);
+			kick_all_players(false);
+			return;
+		}
 		
 		lock_acquire(court->tm->tm_lock);
 		int players_alive = court->tm->tm_data->tm_active_players;
@@ -506,9 +533,15 @@ void court_lobby() {
 		}
 	}
 	
-	court_play(court);
+	if (!court->flooded) {
+		court_play(court);
+	} else {
+		log_write(ERROR_L, "Court %03d: flooded before starting match\n", court->court_id);
+		kick_all_players(court);
+	}
 
-	close(court->court_fifo);
+	if (court->court_fifo >= 0)
+		close(court->court_fifo);
 	court->court_fifo = -1;
 	int i;
 	for (i = 0; i < PLAYERS_PER_MATCH; i++) {
@@ -533,6 +566,13 @@ void court_play(){
 
 	// Play SETS_AMOUNT sets
 	for (j = 0; j < SETS_AMOUNT; j++) {
+
+		if (court->flooded) {
+			court_finish_set();
+			kick_all_players(false);
+			return;
+		}
+
 		msg.m_type = MSG_SET_START;
 
 		log_write(NONE_L, "Court %03d: Set %d started!\n", court->court_id, j+1);
@@ -547,13 +587,20 @@ void court_play(){
 		// main process will make all players stop
 		unsigned long int t_rand = rand() % (SET_MAX_DURATION - SET_MIN_DURATION);
 		usleep(t_rand + SET_MIN_DURATION);
+
+		if (court->flooded) {
+			court_finish_set();
+			kick_all_players(false);
+			return;
+		}
+		
 		court_finish_set(court);
 		
 		// Wait for the four player's scores
 		for (i = 0; i < PLAYERS_PER_MATCH; i++){
-			if(!receive_msg(court->court_fifo, &msg))
+			if(!receive_msg(court->court_fifo, &msg)) {
 				log_write(ERROR_L, "Court %03d: Error reading score from player %03d [errno: %d]\n", court->court_id, i, errno);
-			else {
+			} else {
 				log_write(INFO_L, "Court %03d: Received %d from player %03d\n", court->court_id, msg.m_type, msg.m_player_id);
 				assert(msg.m_type == MSG_PLAYER_SCORE);
 				int pc_id = court_player_to_court_id(msg.m_player_id);
@@ -564,7 +611,8 @@ void court_play(){
 		for(i = 0; i < PLAYERS_PER_MATCH; i++) {
 			int p_id = court_court_id_to_player(i);
 			log_write(INFO_L, "Court %03d: Player %03d set score: %ld\n", court->court_id, p_id, players_scores[i]);
-			}
+		}
+
 		// Determinate the winner of the set
 		unsigned long int score_home = 0, score_away = 0;
 		for (i = 0; i < PLAYERS_PER_TEAM; i++) 
@@ -572,6 +620,7 @@ void court_play(){
 			
 		for (i = PLAYERS_PER_TEAM; i < PLAYERS_PER_MATCH; i++) 
 			score_away += players_scores[i];
+
 		log_write(INFO_L, "Court %03d: This set ended (team 1, team 2): %d - %d\n", court->court_id, score_home, score_away);
 
 		if (score_home > score_away)
@@ -585,22 +634,28 @@ void court_play(){
 		if(court->team_away.sets_won == SETS_WINNING)
 			break;	
 	}
-		
+
 	// Here we make the players stop the match
 	for (i = 0; i < PLAYERS_PER_MATCH; i++) {
-		msg.m_type = MSG_MATCH_END;
+		if (court->flooded)
+			msg.m_type = MSG_MATCH_END;
+		else
+			msg.m_type = MSG_MATCH_END;
 		send_msg(court->player_fifos[i], &msg);
 	}
 
 
 	// Here we update the tournament info to set the court free
 	lock_acquire(court->tm->tm_lock);
-	court->tm->tm_data->tm_courts[court->court_id].court_status = TM_C_FREE;
+	if (!court->flooded)
+		court->tm->tm_data->tm_courts[court->court_id].court_status = TM_C_FREE;
 	court->tm->tm_data->tm_courts[court->court_id].court_num_players = 0;
 	for(i = 0; i < PLAYERS_PER_MATCH; i++)
 		court->tm->tm_data->tm_courts[court->court_id].court_players[i] = INVALID_PLAYER_ID;
 	lock_release(court->tm->tm_lock);
 	
+	if (court->flooded) return;
+
 	update_player_match_data();
 	manage_players_scores();
 	mark_players_partners();
@@ -641,18 +696,32 @@ size_t court_get_away_sets(){
 void court_main(unsigned int court_id, tournament_t* tm) {
 	court_t* court = court_get_instance();
 	court_set_termination_handler();
+	court_set_tide_handler();
+
 	if(!court)
 		exit(-1);
 	
 	court->court_id	= court_id;
 	court->tm = tm;
+
+	lock_acquire(tm->tm_lock);
+	tm->tm_data->tm_courts[court_id].court_pid = getpid();
+	court->flood_sem = tm->tm_data->tm_courts_flood_sem;
+	lock_release(tm->tm_lock);
 		
 	log_write(INFO_L, "Court %03d: Launched using PID: %d\n", court->court_id, getpid());
 	get_court_fifo_name(court_id, court->court_fifo_name);
 
 	while(1){ 
+		if (court->flooded) {
+			log_write(ERROR_L, "Court %03d: it's flooded!! Waiting till water goes down\n", court_id);
+			sem_wait(court->flood_sem, court_id);
+			log_write(ERROR_L, "Court %03d: water went down\n", court_id);
+		}
+
 		court_lobby(court);
 		// Disable court here
+		// if (tournament_ended) bail;
 	}
 
 }
