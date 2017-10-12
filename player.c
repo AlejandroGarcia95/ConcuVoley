@@ -23,10 +23,9 @@
 
 #define MAX_ATTEMPTS 10
 
-/* Auxiliar function that generates a random
- * skill field for a new player. It returns a
- * number "s" for the skill such that s <= 100
- * and s < (SKILL_AVG + DELTA_SKILL) and
+/* Auxiliar function that generates a random skill field for a 
+ * new player. It returns a number "s" for the skill such that 
+ * s <= SKILL_MAX and s < (SKILL_AVG + DELTA_SKILL) and
  * (SKILL_AVG - DELTA_SKILL) < s.
  * Pre: srand was already called.*/
 size_t generate_random_skill(){
@@ -39,17 +38,15 @@ size_t generate_random_skill(){
 	return (r_numb % interval_width) + SKILL_AVG - DELTA_SKILL;
 }
 
-/* Auxiliar function that makes the player
- * sleep some time accordingly to their skill.
- * A random component is added to the time, so
- * a little luck could be better than skill*/
+/* Auxiliar function that makes the player sleep some time 
+ * accordingly to their skill. A random component is added to the
+ * time, so a little luck could be better than skill*/
 void emulate_score_time(){
 	player_t* player = player_get_instance();
 	unsigned long int x = SKILL_MAX - player_get_skill();
-	// Now x is in the range (0, SKILL_MAX)
-	// and it has low values for good skilled
-	// players. Hence, we can map time directly
-	// with x values (bigger x, bigger score time)
+	// Now x is in the range (0, SKILL_MAX) and it has low 
+	// values for good skilled players. Hence, we can map time 
+	// directly with x values (bigger x, bigger score time)
 	unsigned long int t = MIN_SCORE_TIME;
 	int pend = (MAX_SCORE_TIME - MIN_SCORE_TIME) / SKILL_MAX;
 	t += (unsigned long int) (pend * x);
@@ -58,13 +55,11 @@ void emulate_score_time(){
 	usleep(t + t_rand);
 }
 
-/* Dynamically creates a new player with a given 
- * name and properly initialize all other values.
- * Returns NULL if the allocation fails.*/
+/* Dynamically creates a new player with a given name and properly 
+ * initialize all other values. Returns NULL if the allocation fails.*/
 player_t* player_create(){	
 	player_t* player = malloc(sizeof(player_t));
 	if(!player)	return NULL;
-	
 	// Initialize fields
 	player->skill = generate_random_skill();
 	player->matches_played = 0;
@@ -135,8 +130,7 @@ char* player_get_name(){
 	return (player ? player->name : NULL);
 }
 
-/* Returns true or false if the player
- * is or not playing.*/
+/* Returns true or false if the player is or not playing.*/
 bool player_is_playing(){
 	player_t* player = player_get_instance();
 	return (player ? player->currently_playing : false);
@@ -156,9 +150,8 @@ void player_start_playing(){
 		player->currently_playing = true;
 }
 
-/* Handler function for a player process.
- * It should only be used with SIG_SET
- * signal. Makes the player stop playing 
+/* Handler function for a player process. It should only be 
+ * used with SIG_SET signal. Makes the player stop playing 
  * the set if they were playing.*/
 void handler_players_set(int signum) {
 	assert(signum == SIG_SET);
@@ -167,7 +160,6 @@ void handler_players_set(int signum) {
 		player_stop_playing();
 }
 
-// Version 2 of ending
 /* Handler function for SIGTERM signal*/
 void player_handler_termination(int signum) {
 	assert(signum == SIGTERM);
@@ -201,14 +193,11 @@ void player_unset_sigset_handler() {
 	return;
 }
 
-/* Make this player play the current set
- * storing their score in the set_score
- * variable. This function should do the
- * following: make this player sleep an
- * amount of time inversely proportional
- * to their skill, and after that, make
- * it add a point to their score. Then,
- * repeat all over while player_is_playing*/
+/* Make this player play the current set storing their score in 
+ * the set_score variable. This function should do the following: 
+ * make this player sleep an amount of time inversely proportional
+ * to their skill, and after that, make it add a point to their 
+ * score. Then, repeat all over while player_is_playing*/
 void player_play_set(unsigned long int* set_score){
 	player_t* player = player_get_instance();
 	if(!player) return;
@@ -220,12 +209,12 @@ void player_play_set(unsigned long int* set_score){
 }
 
 
-// TODO: documentation
+/* Call this function once player has found a court to join.
+ * Makes the player play every set and leave when necessary.*/
 void player_at_court(player_t* player, int court_fifo, int player_fifo) {
 	message_t msg = {};
 	char* p_name = player->name;
 	while(msg.m_type != MSG_MATCH_END){
-		// REMOVE ME
 		int miss_count = 0;
 
 		if(!receive_msg(player_fifo, &msg)) {
@@ -261,9 +250,6 @@ void player_at_court(player_t* player, int court_fifo, int player_fifo) {
 			log_write(INFO_L, "Player %03d: Wont start playing, received message %d\n", player->id, msg.m_type);
 			miss_count++;
 			if (miss_count >= 2) {
-				// Have to really praise you for this
-				//log_write(CRITICAL_L, "Player %03d: Have to shut down; wont start playing too many times (maybe deadlock)\n", player->id);
-				//player_seppuku(true);
 				log_write(INFO_L, "Player %03d: Kicked from previously accepted court\n", player->id);
 				player->times_kicked++;
 			}
@@ -274,7 +260,12 @@ void player_at_court(player_t* player, int court_fifo, int player_fifo) {
 		player->matches_played++;
 }
 
-// TODO: documentation xd
+/* Make the player join the court found. This function is the one that
+ * establishes a connection between the player and the court using the
+ * protocol of messages defined. It ends with either the player being
+ * rejected by the court (aka player can play with no partner on the
+ * court found), or with the player joining the court, calling the
+ * function player_at_court.*/
 void player_join_court(player_t* player, unsigned int court_id) {
 	log_write(INFO_L, "Player %03d: Found court %03d, attempting to join\n", player->id, court_id);
 	char court_fifo_name[MAX_FIFO_NAME_LEN];
@@ -325,8 +316,8 @@ void player_join_court(player_t* player, unsigned int court_id) {
 		log_write(ERROR_L, "Player %03d: Error reading accepted/rejected msg [errno: %d]\n", player->id, errno);
 		player_seppuku(true);
 	}
+	
 	// Received a msg!!
-	// TODO: qiq???
 	bool qiq = ((msg.m_type == MSG_MATCH_ACCEPT) || (msg.m_type == MSG_MATCH_REJECT));
 	if(!qiq) {
 		log_write(CRITICAL_L, "Player %03d: Message was %d\n", player->id, msg.m_type);
@@ -346,30 +337,13 @@ void player_join_court(player_t* player, unsigned int court_id) {
 	if (close(my_fifo) < 0)
 		log_write(ERROR_L, "Player %03d: Close self_fifo error [errno: %d]\n", player->id, errno);
 
-
-	// Release semaphore
-	// if (sem_post(sem, 0) < 0)
-	//	log_write(ERROR_L, "Player %03d: Error taking semaphore [errno: %d]\n", player->id, errno);
 	log_write(DEBUG_L, "Player %03d: Released semaphore of court %03d\n", player->id, court_id);
 
 }
 
 
-/*
- * TODO: update documentation
- * The player who calls this function is willing to join a court. It will connect with
- * main controller and send a "Gimme a place to play" message.
- *
- * It will sleep until it receives a response from main controller via it's own semaphore fifo.
- * Two things can happen then:
- *	- the message is of type MSG_FREE_COURT, and msg.m_court_id 
- *	  tells which court the player can join.
- *	- the message is of type MSG_TOURNAMENT_END, indicating no 
- *	  more matches will be played, and player should leave.
- *
- *
- * LA POSTA: devuelve true si se pudo conectar a una cancha, false si no había ninguna disponible
- */
+/* The player who calls this function is willing to join a court.
+ * Returns true if could found a court. */
 bool player_looking_for_court(player_t* player) {
 	log_write(INFO_L, "Player %03d: Looking for a court\n", player->id);
 
@@ -383,8 +357,7 @@ bool player_looking_for_court(player_t* player) {
 	for (i = 0; i < player->tm->total_courts; i++) {
 		court_data_t cd = player->tm->tm_data->tm_courts[i];
 		
-		// Which criteria will the player use to join a court??
-		//	Should be: search for a court with most num_players which has room.
+		// Search for a court with most num_players which has room.
 		//		   if there is a tie, choose the first one.
 		if ((cd.court_status == TM_C_FREE) && (cd.court_num_players > best_num_players)) {
 			log_write(INFO_L, "Player %03d: checking for court %03d, and is %d with %d players\n", player->id, i, cd.court_status, cd.court_num_players);
@@ -400,8 +373,6 @@ bool player_looking_for_court(player_t* player) {
 			cd.court_status = TM_C_BUSY;
 		player->tm->tm_data->tm_courts[best_so_far] = cd;
 		court_id = best_so_far;
-		//log_write(CRITICAL_L, "Player %03d: Incremented court_num_players of court %03d, value is at %d\n", 
-		//				player->id, court_id, player->tm->tm_data->tm_courts[court_id].court_num_players);
 	}
 	lock_release(player->tm->tm_lock);
 
@@ -413,16 +384,8 @@ bool player_looking_for_court(player_t* player) {
 
 
 
-/* Function that makes the process adopt
- * a player's role. Basically, it creates
- * a player, and make them play a court.
- * Every set of the court starts when the
- * main process sends a "start playing" 
- * message through the fifo, and ends when
- * the player receives a SIG_SET signal 
- * (as a set could end unexpectedly). At
- * the end of each set, the player must
- * send through the fifo their score.*/
+/* Function that makes the process adopt a player's role. Basically, 
+ * it creates a player, and make them play the tournament.*/
 void player_main(unsigned int id, tournament_t* tm) {
 	// Re-srand with a changed seed
 	srand(time(NULL) ^ (getpid() << 16));
@@ -448,8 +411,6 @@ void player_main(unsigned int id, tournament_t* tm) {
 	log_write(INFO_L, "Player %03d: Launched as %s using PID: %d\n", player->id, p_name, getpid());
 	log_write(INFO_L, "Player %03d: Player skill is: %d\n", player->id, player_get_skill());
 	
-//	unsigned long int t_rand = rand() % MAX_SECONDS_OUTSIDE + 0;
-//	sleep(t_rand);
 	log_write(INFO_L, "Player %03d: decided to enter the tournament\n", player->id);
 
 	lock_acquire(tm->tm_lock);
@@ -472,18 +433,6 @@ void player_main(unsigned int id, tournament_t* tm) {
 		lock_acquire(tm->tm_lock);
 		int players_alive = tm->tm_data->tm_active_players;
 		lock_release(tm->tm_lock);
-		
-		// Version 1 of ending
-		// Different cut condition based on player amount
-		// Totally empirical, must be the same as in main
-		/*if(tm->total_players > 20)
-			cut_condition = (players_alive <= (tm->total_players * 0.2));
-		else
-			cut_condition = (players_alive < 4);
-			
-		if(cut_condition)
-			break;
-		*/
 		
 		unsigned long int prob = rand() % 100;
 		if (prob < LEAVING_PROB) {
@@ -518,7 +467,7 @@ void player_main(unsigned int id, tournament_t* tm) {
 		else
 			attempts = 0;
 		
-		// Sad end for player: leaves when nobody loves him 
+		// Sad ending for player: leaves when nobody loves him 
 		if (player->times_kicked == MAX_TIMES_KICKED) {
 			log_write(INFO_L, "Player %03d: Kicked too many times. Giving up!\n", player->id);
 			break;

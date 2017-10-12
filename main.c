@@ -179,7 +179,6 @@ int launch_tide(tournament_t* tm, struct conf sc) {
 	return 0;
 }
 
-
 // Debug only!
 void print_tournament_status(tournament_t* tm) {
 	lock_acquire(tm->tm_lock);
@@ -204,12 +203,17 @@ void print_tournament_results(tournament_t* tm) {
 
 	int i, j;
 	int color;
+	
+	int matches_completed = 0;
+	int max_score = 0;
 	log_write(STAT_L, "Player information!\n");
 	for (i = 0; i < tm->total_players; i++) {
 		player_data_t pd = tm->tm_data->tm_players[i];
 		color = (pd.player_pid % 20) * 2 + 1;
 		log_write(STAT_L, "\t\x1b[1;38;5;%dm - Player %03d, %s (had pid %d)\n", color, i, pd.player_name, pd.player_pid);
 		log_write(STAT_L, "\t\t\x1b[1;38;5;%dm %d matches finished:\n", color, pd.player_num_matches);
+		// Statistics
+		matches_completed += pd.player_num_matches;
 		for (j = 0; j < pd.player_num_matches; j++) {
 			match_data_t md = pd.player_matches[j];
 			log_write(STAT_L, "\t\t\x1b[1;38;5;%dm %03d & %03d (%d) VS (%d) %03d & %03d at court %03d\n", color,
@@ -219,22 +223,21 @@ void print_tournament_results(tournament_t* tm) {
 		}
 	}
 
-	// TODO: Yo creo que si agregamos algunas stats como las de abajo (que son contadores, nada más)
-	//	 les va a gustar más nuestro tp.
+	log_write(STAT_L, "Matches completed: %d\n", matches_completed/PLAYERS_PER_MATCH);
+	// Get max score
+	for(i = 0; i < tm->total_players; i++) {
+		int p_score = get_player_score(tm->tm_data->st, i);
+		if(p_score > max_score) max_score = p_score;
+	}
 
-	log_write(STAT_L, "Matchs completed: 000000\n");
-	log_write(STAT_L, "Matchs suspended by tides: 00000\n");
-	log_write(STAT_L, "Player with most wins: 00000\n");
-	log_write(STAT_L, "Most skilled player: 00000\n");
-	log_write(STAT_L, "Least skilled player: 00000\n");
-	log_write(STAT_L, "Most used court: 00000\n");
-
-	log_write(STAT_L, "\nLeaderboard (top 10 players)\n");
-
-
-	log_write(STAT_L, "\x1b[5m CONGRATULATIONS PLAYER X FOR WINNING\n");
+	// Get all players with that score
+	for(i = 0; i < tm->total_players; i++) {
+		int p_score = get_player_score(tm->tm_data->st, i);
+		char* p_name = tm->tm_data->tm_players[i].player_name;
+		if(p_score == max_score)
+			log_write(STAT_L, "\x1b[5m CONGRATULATIONS PLAYER %03d, %s, FOR WINNING (score: %d)\n", i, p_name, p_score);
+	}
 	
-
 	lock_release(tm->tm_lock);
 }
 
@@ -250,7 +253,6 @@ int main(int argc, char **argv){
 	// otherwise, you don't know where you are going."
 	pid_t main_pid = getpid();
 	
-
 	struct conf sc = {};
 	if(!read_conf_file(&sc)){
 		printf("FATAL: Error parsing configuration file [errno: %d]\n", errno);
@@ -269,8 +271,6 @@ int main(int argc, char **argv){
 	}
 
 	log_write(NONE_L, "Main: Let the tournament begin!\n");
-
-	// Let's launch player processes and make them play, yay!
 	int i, j;
 
 	// Launch players processes
@@ -299,11 +299,9 @@ int main(int argc, char **argv){
 	for (i = 0; i < tm->total_courts; i++) {
 		launch_court(i, tm);
 	}
-	
 
 	// No child proccess should end here
 	// ALL childs must finish with a exit(status) call.
-	// The only cleaning to be done by them is log_close(log)
 	if(getpid() != main_pid){
 		assert(false);
 		// Sanity check
@@ -326,14 +324,12 @@ int main(int argc, char **argv){
 		int pid = wait(&status);
 		int ret = WEXITSTATUS(status);
 		log_write(INFO_L, "Main: Proccess pid %d finished with exit status %d\n", pid, ret);
-		//print_tournament_status(tm);
 		
 		lock_acquire(tm->tm_lock);
 		int players_alive = tm->tm_data->tm_active_players;
 		lock_release(tm->tm_lock);
 
 		// Different cut condition based on player amount
-		// Totally empirical, must be the same as in court and player
 		if(sc.players > 20)
 			cut_condition = (players_alive <= (sc.players * 0.2));
 		else
@@ -342,10 +338,6 @@ int main(int argc, char **argv){
 		if(cut_condition && (!courts_waken)) {
 			courts_waken = true;
 			log_write(INFO_L, "Main: Enough matches performed. Terminating processes!\n");
-			// Version 1 of ending
-			//for(j = 0; j < tm->total_courts; j++)
-			//	sem_post(tm->tm_data->tm_courts_sem, j);
-			// Version 2 of ending
 			kill(0, SIGTERM);
 		}
 	}
@@ -360,4 +352,3 @@ int main(int argc, char **argv){
 	log_close();
 	return 0;
 }
-

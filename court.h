@@ -107,10 +107,4 @@ unsigned int court_player_to_court_id(unsigned int player_id);
 unsigned int court_court_id_to_player(unsigned int pc_id);
 void court_main(unsigned int court_id, tournament_t* tm);
 
-/* Returns the sets won by home and away 
- * playes. If court is NULL, let them both 
- * return 0 for the time being.*/
-size_t court_get_home_sets();
-size_t court_get_away_sets();
-
 #endif

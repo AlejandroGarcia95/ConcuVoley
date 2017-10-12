@@ -139,7 +139,6 @@ void tide_main(tournament_t* tm, struct conf sc){
 			tide_parse_command(sc, param, t_value, tm);
 			}
 		}
-	
 
 	tide_destroy();
 	tournament_destroy(tm);

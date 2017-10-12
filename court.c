@@ -109,6 +109,7 @@ unsigned int court_court_id_to_player(unsigned int pc_id){
 	return team.team_players[pc_id];
 }
 
+/* Transforms sets won by team into team scores.*/
 void manage_players_scores(){
 	court_t* court = court_get_instance();
 	int won_team = (int) (court->team_home.sets_won < court->team_away.sets_won);  
@@ -136,7 +137,7 @@ void manage_players_scores(){
 	}
 }
 
-
+// Merely statistics purpose
 void update_player_match_data() {
 	court_t* court = court_get_instance();
 	match_data_t md = {};
@@ -177,7 +178,7 @@ void connect_player_in_team(unsigned int p_id, unsigned int team){
 
 	if (!send_msg(court->player_fifos[court->connected_players], &msg)) {
 		log_write(ERROR_L, "Court %03d: Failed to send accept msg to player %03d [errno: %d]\n", court->court_id, p_id, errno);
-		exit(-1);	// TODO: don't bail, just revert changes
+		exit(-1);
 	}
 
 	court->connected_players++;
@@ -207,7 +208,7 @@ void kick_all_players(bool court_available){
 		msg.m_type = MSG_MATCH_REJECT;
 		if (!send_msg(court->player_fifos[i], &msg)) {
 			log_write(ERROR_L, "Court %03d: Failed to send reject msg to player %03d [errno: %d]\n", court->court_id, p_id, errno);
-			exit(-1);	// TODO: don't bail, just revert changes
+			exit(-1);
 		}
 		if(court->player_fifos[i] > 0)
 			close(court->player_fifos[i]);
@@ -231,6 +232,8 @@ void kick_all_players(bool court_available){
 	lock_release(court->tm->tm_lock);
 }
 
+/* Sends a MSG_MATCH_REJECT to the received player through their
+ * FIFO. It also readjust the amount of players on this court.*/
 void reject_player(unsigned int p_id) {
 	court_t* court = court_get_instance();
 	lock_acquire(court->tm->tm_lock);
@@ -240,10 +243,9 @@ void reject_player(unsigned int p_id) {
 	msg.m_type = MSG_MATCH_REJECT;
 	if (!send_msg(court->player_fifos[court->connected_players], &msg)) {
 		log_write(ERROR_L, "Court %03d: Failed to send reject msg to player %03d [errno: %d]\n", court->court_id, p_id, errno);
-		exit(-1);	// TODO: don't bail, just revert changes
+		exit(-1);
 	}
 	close(court->player_fifos[court->connected_players]);
-	
 	
 	court_data_t cd = court->tm->tm_data->tm_courts[court->court_id];
 
@@ -255,6 +257,7 @@ void reject_player(unsigned int p_id) {
 	lock_release(court->tm->tm_lock);
 }
 
+/* Pretty self-descripting function.*/
 void court_self_destruct(){
 	court_t* court = court_get_instance();
 	lock_acquire(court->tm->tm_lock);
@@ -274,15 +277,10 @@ void court_self_destruct(){
 	exit(0);
 }
 		
-
 /* Handler function for SIG_TIDE signal*/
 void court_handler_tide(int signum) {
 	assert(signum == SIG_TIDE);
 	court_t* court = court_get_instance();
-	/* TODO: Check if self court status has changed
-	to TM_C_FLOODED. If so, court_finish_set and
-	kick_all_players.*/
-
 	tournament_t* tm = court->tm;
 	if (tm->tm_data->tm_courts[court->court_id].court_status == TM_C_FLOODED) {
 		court->flooded = true;
@@ -302,8 +300,6 @@ void court_set_tide_handler() {
 	sigaction(SIG_TIDE, &sa, NULL);
 }
 
-
-// Version 2 of ending
 /* Handler function for SIGTERM signal*/
 void court_handler_termination(int signum) {
 	assert(signum == SIGTERM);
@@ -322,8 +318,7 @@ void court_set_termination_handler() {
 	sigaction(SIGTERM, &sa, NULL);
 }
 
-/* Marks each player's partner on the partners_table
- * stored at court.*/
+/* Marks each player's partner on the partners_table stored at court.*/
 void mark_players_partners(){
 	court_t* court = court_get_instance();
 	if((!court) || (!court->tm->tm_data->pt)) return;
@@ -379,7 +374,6 @@ void handle_player_team(message_t msg){
 				connect_player_in_team(msg.m_player_id, 1);
 			else // kick player
 				reject_player(msg.m_player_id);
-			
 		}
 		
 	join_attempts++;
@@ -429,8 +423,7 @@ court_t* court_create() {
 	return court;
 }
 
-/* Kills the received court and sends flowers
- * to his widow.*/
+/* Kills the received court and sends flowers to his widow.*/
 void court_destroy(){
 	court_t* court = court_get_instance();
 	partners_table_destroy(court->tm->tm_data->pt);
@@ -485,22 +478,6 @@ void court_lobby() {
 		lock_acquire(court->tm->tm_lock);
 		int players_alive = court->tm->tm_data->tm_active_players;
 		lock_release(court->tm->tm_lock);
-		
-		// Different cut condition based on player amount
-		// Totally empirical, must be the same as in main
-		// Version 1 of ending
-		/*
-		if(court->tm->total_players > 20)
-			cut_condition = (players_alive <= (court->tm->total_players * 0.2));
-		else
-			cut_condition = (players_alive < 4);
-		
-		if(cut_condition) {
-			log_write(CRITICAL_L, "Court %03d: No more matches can be played. Self-destruct protocol started.\n", court->court_id);
-			court_self_destruct(court);
-			assert(false);
-		}
-		*/
 		// Now court is in the "empty" state, waiting for new connections
 		open_court_fifo(court);
 		log_write(INFO_L, "Court %03d: Court awaiting connections\n", court->court_id, errno);
@@ -549,15 +526,11 @@ void court_lobby() {
 	}
 }
 
-
-/* Plays the match. Communication is done
- * using the players' fifos, and sets are
- * played until one of the two teams wins
- * SETS_WINNING sets, or until SETS_AMOUNT
- * sets are played. If the close_pipes field
- * was set on this court creation, this
- * function also closes the fifos file des-
- * criptors at the end of the court. */
+/* Plays the match. Communication is done using the players' fifos, 
+ * and sets are played until one of the two teams wins SETS_WINNING 
+ * sets, or until SETS_AMOUNT sets are played. If the close_pipes field
+ * was set on this court creation, this function also closes the fifos 
+ * file descriptors. */
 void court_play(){
 	court_t* court = court_get_instance();
 	int i, j;
@@ -674,25 +647,7 @@ void court_finish_set(){
 	}
 }
 
-/* Returns the sets won by home and away 
- * playes. If court is NULL, let them both 
- * return 0 for the time being.*/
-size_t court_get_home_sets(){
-	court_t* court = court_get_instance();
-	return (court ? court->team_home.sets_won : 0);
-}
-
-size_t court_get_away_sets(){
-	court_t* court = court_get_instance();
-	return (court ? court->team_away.sets_won : 0);
-}
-
-
-// TODO: Disable court if it's no longer necessary??
-// Obs: Court with id "i" will be no longer needed if 
-// tm_active_players <= PLAYERS_PER_MATCH * i
-// (court ids starting at 0)
-
+/* Executes main for this process. Finishes via exit(0)*/
 void court_main(unsigned int court_id, tournament_t* tm) {
 	court_t* court = court_get_instance();
 	court_set_termination_handler();
@@ -720,8 +675,6 @@ void court_main(unsigned int court_id, tournament_t* tm) {
 		}
 
 		court_lobby(court);
-		// Disable court here
-		// if (tournament_ended) bail;
 	}
 
 }

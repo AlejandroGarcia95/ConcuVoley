@@ -18,8 +18,7 @@
 #define SIG_SET SIGUSR1
 #define SIG_TIDE SIGUSR2
 
-// Numbre of player id which will be invalid
-// TODO: Change this for dynamic memory
+// Number of player id which will be invalid
 #define MAX_COURTS 200
 #define MAX_PLAYERS 200
 #define MIN_PLAYERS_TO_START 10
@@ -81,9 +80,6 @@ bool receive_msg(int fifo_fd, message_t* msg);
 /* Sends the message msg through fifo_fd. Returns true if
  * successful, or false otherwise.*/
 bool send_msg(int fifo_fd, message_t* msg);
-
-// Prop: Create a function "message_create(m_type, m_id, m_score)"
-// for shortening code
 
 
 #endif //PROTOCOL_H

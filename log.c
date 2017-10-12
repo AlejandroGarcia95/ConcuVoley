@@ -96,7 +96,7 @@ int log_write(log_level lvl, char* msg, ... ){
 	log_t* log = log_get_instance();	
 	if(!(log && log->log_file)) return -1;
 	
-	if((!log->debug) && (lvl != NONE_L))
+	if((!log->debug) && ((lvl != NONE_L) && (lvl != STAT_L)))
 		return -1;
 		
 	lock_acquire(log->lock);

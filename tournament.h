@@ -8,16 +8,12 @@
 #include "partners_table.h"
 #include "confparser.h"
 
-
-// TODO: careful with this!
 #define MAX_NUM_MATCHES 40
 #define NAME_MAX_LENGTH 50
 
 /*
- * Referee information will now be distributed. Everyone should be able
+ * Tournament distributed information. Everyone should be able
  * to access and modify, previously locking the TDA.
- *
- * What specific data is stored here should be defined soon.
  */
 
 typedef enum _player_status {
@@ -63,7 +59,6 @@ typedef struct _court_data {
 } court_data_t;
 
 typedef struct tournament_data {
-	// TODO: Change this for dynamic allocation
 	player_data_t tm_players[MAX_PLAYERS];
 	court_data_t tm_courts[MAX_COURTS];
 	// General stats.
