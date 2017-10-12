@@ -9,17 +9,13 @@
 #include "log.h"
 #include "score_table.h"
 #include "partners_table.h"
+#include "tournament.h"
 #include "protocol.h"
-
-#define PLAYERS_PER_MATCH 4
-#define PLAYERS_PER_TEAM (PLAYERS_PER_MATCH / 2)
 
 #define SETS_AMOUNT 5
 #define SETS_WINNING 3
 
 #define JOIN_ATTEMPTS_MAX (PLAYERS_PER_MATCH + 3) // 3 "wrong attempts" before kicking everyone
-
-#define SIG_SET SIGUSR1
 
 /* Structure for modelling each team playing on the court. */
 typedef struct court_team_ {
@@ -42,12 +38,14 @@ typedef struct court_ {
 	char court_fifo_name[MAX_FIFO_NAME_LEN];
 	bool close_pipes; 
 
+	bool flooded;
+	int flood_sem;
+
 	court_team_t team_home; // team 0
 	court_team_t team_away; // team 1
 	uint8_t connected_players;
 	
-	partners_table_t* pt;
-	score_table_t* st;
+	tournament_t* tm;
 } court_t;
 
 // --------------- Court team section --------------
@@ -73,24 +71,13 @@ void court_team_add_score_players(court_team_t team, score_table_t* st, int scor
 
 // --------------- Court section -------------------
 
-/* Dynamically creates a new court. Returns
- * NULL in failure. The pipes argument are
- * the pipes file descriptors used for commu-
- * nication with the players. Note that the
- * pipes[][0] to pipes[PLAYERS_PER_TEAM-1]
- * file descriptors represent players of the
- * same team. The boolean argument tells the
- * court to close the file descriptors. 
- * Pre 1: The players processes were already
- * launched and the pipes for communicating
- * with them are the ones received.
- * Pre 2: The players processes ARE CHILDREN
- * PROCESSES of the process using this court.*/
-court_t* court_create(unsigned int court_id, partners_table_t* pt, score_table_t* st);
+/* Returns the current court singleton!*/
+court_t* court_get_instance();
+
 
 /* Kills the received court and sends flowers
  * to his widow.*/
-void court_destroy(court_t* court);
+void court_destroy();
 
 /* Plays the court. Communication is done
  * using the players' pipes, and sets are
@@ -100,31 +87,30 @@ void court_destroy(court_t* court);
  * was set on this court creation, this
  * function also closes the pipes file des-
  * criptors at the end of the court. */
-void court_play(court_t* court);
-void court_lobby(court_t* court);
+void court_play();
+void court_lobby();
 
 /* Finish the current set by signaling
  * the players with SIG_SET.*/
-void court_finish_set(court_t* court);
+void court_finish_set();
 
 /* Returns a number between 0 and PLAYERS_PER_MATCH -1 which 
  * represents the "player_court_id", a player id that is 
  * "relative" to this court. If the player_id received doesn't
  * belong to a player on this court, returns something above
  * PLAYERS_PER_MATCH.*/
-unsigned int court_player_to_court_id(court_t* court, unsigned int player_id);
+unsigned int court_player_to_court_id(unsigned int player_id);
 
 /* Inverse of the function above. Receives a "player_court_id"
  * relative to this court and returns the player_id. Returns
- * something above TOTAL_PLAYERS in case of error.*/
-unsigned int court_court_id_to_player(court_t* court, unsigned int pc_id);
-
-void court_main(unsigned int court_id, partners_table_t* pt, score_table_t* st);
+ * something above players amount in case of error.*/
+unsigned int court_court_id_to_player(unsigned int pc_id);
+void court_main(unsigned int court_id, tournament_t* tm);
 
 /* Returns the sets won by home and away 
  * playes. If court is NULL, let them both 
  * return 0 for the time being.*/
-size_t court_get_home_sets(court_t* court);
-size_t court_get_away_sets(court_t* court);
+size_t court_get_home_sets();
+size_t court_get_away_sets();
 
 #endif

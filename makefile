@@ -1,6 +1,6 @@
 CFLAGS := -g
-VFLAGS := --leak-check=full --show-leak-kinds=all
-ARCHIVOS = log.o player.o namegen.o confparser.o court.o protocol.o partners_table.o lock.o semaphore.o score_table.o
+VFLAGS := --leak-check=full --show-leak-kinds=all --track-origins=yes
+ARCHIVOS = log.o tide.o player.o namegen.o confparser.o court.o protocol.o partners_table.o lock.o semaphore.o score_table.o tournament.o
 PROGRAMA = main
 
 all: clean $(PROGRAMA)

@@ -6,11 +6,20 @@
 #include <stdbool.h>
 #include "log.h"
 
+#include "tournament.h"	// For tournament_t
+
 #define NAME_MAX_LENGTH 50
 
 #define SKILL_MAX 100
 #define SKILL_AVG 80
 #define DELTA_SKILL 15
+
+
+#define MAX_SECONDS_OUTSIDE	20	// Up to 20 seconds before entering for the first time
+#define MAX_TIME_RESTING	5000000	// 5 seconds
+#define LEAVING_PROB		2	// 2%	Leaving the tournament completelly
+#define RESTING_PROB		15	// 15%	Leaving the tournament for a time with distribution ~U(0, MAX_SECONDS_RESTING)
+					//	Should be greater than LEAVING_PROB
 
 /* Third checkpoint major update: From now on, as
  * there will only be one player_t for each player
@@ -27,7 +36,10 @@ typedef struct player_ {
 	char name[NAME_MAX_LENGTH];
 	size_t skill;
 	size_t matches_played;
+	size_t times_kicked;
 	bool currently_playing;
+
+	tournament_t* tm;
 } player_t;
 
 /* Returns the current player singleton!*/
@@ -66,6 +78,6 @@ void player_stop_playing();
 /* Makes player stop playing.*/
 void player_start_playing();
 
-void player_main(unsigned int id);
+void player_main(unsigned int id, tournament_t* tm);
 
 #endif

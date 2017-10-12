@@ -22,24 +22,30 @@
 #include "protocol.h"
 #include "semaphore.h"
 #include "score_table.h"
+#include "tournament.h"
+#include "tide.h"
 
 /* Returns negative in case of error!*/
-int main_init(){
+int main_init(tournament_t* tm, struct conf sc){
 	srand(time(NULL));
 	// Spawn log
 	if(log_write(NONE_L, "Main: Simulation started!\n") < 0){
 		printf("FATAL: No log could be opened!\n");
 		return -1;
 	}
+	log_set_debug_mode(sc.debug);
+	
 	log_write(INFO_L, "Main: Self pid is %d\n", getpid());
 	
-	// We want processes to ignore SIG_SET signal unless
-	// we set it explicitily
+	// We want processes to ignore SIG_SET and
+	// SIG_TIDE signals unless we set it explicitily
 	signal(SIG_SET, SIG_IGN);
+	signal(SIG_TIDE, SIG_IGN);
+	signal(SIGTERM, SIG_IGN);
 	
 	// Create every player FIFO
 	int i;
-	for(i = 0; i < TOTAL_PLAYERS; i++){
+	for(i = 0; i < sc.players; i++){
 		char player_fifo_name[MAX_FIFO_NAME_LEN];
 		get_player_fifo_name(i, player_fifo_name);
 		// Create the fifo for the player.
@@ -50,32 +56,71 @@ int main_init(){
 	}
 	
 	// Create every court FIFO
-	for(i = 0; i < TOTAL_COURTS; i++){
+	for(i = 0; i < (sc.rows * sc.cols); i++){
 		char court_fifo_name[MAX_FIFO_NAME_LEN];
 		get_court_fifo_name(i, court_fifo_name);
 		// Creating fifo for court
 		if(!create_fifo(court_fifo_name)) {
 			log_write(ERROR_L, "Main: FIFO creation error for court %03d [errno: %d]\n", i, errno);
 			return -1;
-	}
+		}
 	}
 	
-	// Start semaphores for courts. Every court is responsible for destroying own semaphores
-	unsigned int cid = 0;
-	// for every court cid in (1, court_max) do:
-		char court_fifo_name[MAX_FIFO_NAME_LEN];
-		get_court_fifo_name(cid, court_fifo_name);
-		int sem = sem_get(court_fifo_name, 1);
-		if (sem < 0) {
-			log_write(ERROR_L, "Main: Error creating semaphore [errno: %d]\n", errno);
-			return -1;
-		}
+	// Court semaphores
+	int sem = sem_get("court.c", (sc.rows * sc.cols));
+	if (sem < 0) {
+		log_write(ERROR_L, "Main: Error creating semaphore [errno: %d]\n", errno);
+		return -1;
+	}
+	log_write(INFO_L, "Main: Got semaphore %d with name %s\n", sem, "court.c");
+	if (sem_init_all(sem, (sc.rows * sc.cols), 0) < 0) {
+		log_write(ERROR_L, "Main: Error initializing the semaphore [errno: %d]\n", errno);
+		return -1;
+	}
+	tm->tm_data->tm_courts_sem = sem;
 
-		log_write(INFO_L, "Main: Got semaphore %d with name %s\n", sem, court_fifo_name);
-		if (sem_init(sem, 0, 0) < 0) {
-			log_write(ERROR_L, "Main: Error initializing the semaphore [errno: %d]\n", errno);
-			return -1;
-		}
+	// Court flood semaphores
+	sem = sem_get("tide.c", (sc.rows * sc.cols));
+	if (sem < 0) {
+		log_write(ERROR_L, "Main: Error creating semaphore [errno: %d]\n", errno);
+		return -1;
+	}
+	log_write(INFO_L, "Main: Got semaphore %d with name %s\n", sem, "court.c");
+	if (sem_init_all(sem, (sc.rows * sc.cols), 0) < 0) {
+		log_write(ERROR_L, "Main: Error initializing the semaphore [errno: %d]\n", errno);
+		return -1;
+	}
+	tm->tm_data->tm_courts_flood_sem = sem;
+
+	// Players semaphores
+	sem = sem_get("player.c", sc.players);
+	if (sem < 0) {
+		log_write(ERROR_L, "Main: Error creating semaphore [errno: %d]\n", errno);
+		return -1;
+	}
+	log_write(INFO_L, "Main: Got semaphore %d with name %s\n", sem, "player.c");
+	if (sem_init_all(sem, sc.players, 0) < 0) {
+		log_write(ERROR_L, "Main: Error initializing the semaphore [errno: %d]\n", errno);
+		return -1;
+	}
+	tm->tm_data->tm_players_sem = sem;
+	
+	// Tournament init semaphores
+	sem = sem_get("tournament.c", 2);
+	if (sem < 0) {
+		log_write(ERROR_L, "Main: Error creating semaphore [errno: %d]\n", errno);
+		return -1;
+	}
+	log_write(INFO_L, "Main: Got semaphore %d with name %s\n", sem, "tournament.c");
+	if (sem_init(sem, 0, 0) < 0) {
+		log_write(ERROR_L, "Main: Error initializing the semaphore [errno: %d]\n", errno);
+		return -1;
+	}
+	if (sem_init(sem, 1, 0) < 0) {
+		log_write(ERROR_L, "Main: Error initializing the semaphore [errno: %d]\n", errno);
+		return -1;
+	}
+	tm->tm_data->tm_init_sem = sem;
 }
 
 /* Launches a new process which will assume a
@@ -84,7 +129,7 @@ int main_init(){
  * player process, this function must call the
  * player_main function to allow it to play 
  * against other in a court. */
-int launch_player(unsigned int player_id) {
+int launch_player(unsigned int player_id, tournament_t* tm) {
 	
 	log_write(INFO_L, "Main: Launching player %03d!\n", player_id);
 
@@ -92,10 +137,10 @@ int launch_player(unsigned int player_id) {
 	pid_t pid = fork();
 
 	if (pid < 0) { // Error
-		log_write(ERROR_L, "Main: Fork failed!\n");
+		log_write(CRITICAL_L, "Main: Fork failed!\n");
 		return -1;
 	} else if (pid == 0) { // Son aka player
-		player_main(player_id);
+		player_main(player_id, tm);
 		assert(false);	// Should not return!
 	} 
 	return 0;
@@ -103,24 +148,95 @@ int launch_player(unsigned int player_id) {
 
 
 
-// TODO: make so it is not necesary to pass pointer to partners table
-int launch_court(unsigned int court_id, partners_table_t* pt, score_table_t* st) {
+int launch_court(unsigned int court_id, tournament_t* tm) {
 	log_write(INFO_L, "Main: Launching court %03d!\n", court_id);
 
 	// New process, new court!
 	pid_t pid = fork();
 
 	if (pid < 0) { // Error
-		log_write(ERROR_L, "Main: Fork failed!\n");
+		log_write(CRITICAL_L, "Main: Fork failed!\n");
 		return -1;
 	} else if (pid == 0) { // Son aka court
-		court_main(court_id, pt, st);
+		court_main(court_id, tm);
 		assert(false); // Should not return!
 	}
 	return 0;
-
 }
 
+int launch_tide(tournament_t* tm, struct conf sc) {
+	log_write(INFO_L, "Main: Launching tide process!\n");
+
+	pid_t pid = fork();
+
+	if (pid < 0) { // Error
+		log_write(CRITICAL_L, "Main: Fork failed!\n");
+		return -1;
+	} else if (pid == 0) { // Son aka tide
+		tide_main(tm, sc);
+		assert(false); // Should not return!
+	}
+	return 0;
+}
+
+
+// Debug only!
+void print_tournament_status(tournament_t* tm) {
+	lock_acquire(tm->tm_lock);
+	int i;
+	log_write(INFO_L, "Main: %d players remain active!\n", tm->tm_data->tm_active_players);
+	for (i = 0; i < tm->total_courts; i++) {
+		court_data_t cd = tm->tm_data->tm_courts[i];
+		log_write(INFO_L, "Main: Court %03d is in state %d, with %d players inside\n", i, cd.court_status, cd.court_num_players);
+		int j;
+		for (j = 0; j < cd.court_num_players; j++) {
+			log_write(INFO_L, "\t\t\t---> Player %03d is inside\n", cd.court_players[j]);
+		}
+	}
+	lock_release(tm->tm_lock);
+}
+
+
+#define PRINTCOLOR
+void print_tournament_results(tournament_t* tm) {
+	lock_acquire(tm->tm_lock);
+	log_write(STAT_L, "Useful information about the tournament overall\n");
+
+	int i, j;
+	int color;
+	log_write(STAT_L, "Player information!\n");
+	for (i = 0; i < tm->total_players; i++) {
+		player_data_t pd = tm->tm_data->tm_players[i];
+		color = (pd.player_pid % 20) * 2 + 1;
+		log_write(STAT_L, "\t\x1b[1;38;5;%dm - Player %03d, %s (had pid %d)\n", color, i, pd.player_name, pd.player_pid);
+		log_write(STAT_L, "\t\t\x1b[1;38;5;%dm %d matches finished:\n", color, pd.player_num_matches);
+		for (j = 0; j < pd.player_num_matches; j++) {
+			match_data_t md = pd.player_matches[j];
+			log_write(STAT_L, "\t\t\x1b[1;38;5;%dm %03d & %03d (%d) VS (%d) %03d & %03d at court %03d\n", color,
+					md.match_players[0], md.match_players[1], md.match_score[0],
+					md.match_score[1], md.match_players[2], md.match_players[3], 
+					md.match_played_at);
+		}
+	}
+
+	// TODO: Yo creo que si agregamos algunas stats como las de abajo (que son contadores, nada más)
+	//	 les va a gustar más nuestro tp.
+
+	log_write(STAT_L, "Matchs completed: 000000\n");
+	log_write(STAT_L, "Matchs suspended by tides: 00000\n");
+	log_write(STAT_L, "Player with most wins: 00000\n");
+	log_write(STAT_L, "Most skilled player: 00000\n");
+	log_write(STAT_L, "Least skilled player: 00000\n");
+	log_write(STAT_L, "Most used court: 00000\n");
+
+	log_write(STAT_L, "\nLeaderboard (top 10 players)\n");
+
+
+	log_write(STAT_L, "\x1b[5m CONGRATULATIONS PLAYER X FOR WINNING\n");
+	
+
+	lock_release(tm->tm_lock);
+}
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
  * 
@@ -134,67 +250,113 @@ int main(int argc, char **argv){
 	// otherwise, you don't know where you are going."
 	pid_t main_pid = getpid();
 	
-	if(main_init() < 0) {
+
+	struct conf sc = {};
+	if(!read_conf_file(&sc)){
+		printf("FATAL: Error parsing configuration file [errno: %d]\n", errno);
+		return -1;		
+	}
+	
+	tournament_t* tm = tournament_create(sc);
+	if (!tm) {
+		printf("FATAL: Error creating tournament data [errno: %d]\n", errno);
+		return -1;
+	}
+
+	if(main_init(tm, sc) < 0) {
 		printf("FATAL: Something went really wrong!\n");
 		return -1;
 	}
-		
 
 	log_write(NONE_L, "Main: Let the tournament begin!\n");
 
 	// Let's launch player processes and make them play, yay!
-	int i;
+	int i, j;
 
 	// Launch players processes
-	for(i = 0; i < TOTAL_PLAYERS; i++){
-		launch_player(i);
+	for(i = 0; i < sc.players; i++){
+		launch_player(i, tm);
 	}
 	
+	// Launch tide
+	launch_tide(tm, sc);
+	
 	// Create table of partners
-	partners_table_t* pt = partners_table_create(TOTAL_PLAYERS);
+	partners_table_t* pt = partners_table_create(sc.players);
 	if(!pt) {
-		log_write(ERROR_L, "Main: Error creating partners table [errno: %d]\n", errno);
+		log_write(CRITICAL_L, "Main: Error creating partners table [errno: %d]\n", errno);
 	}
 
 	// Create score table
-	score_table_t* st = score_table_create(TOTAL_PLAYERS);
+	score_table_t* st = score_table_create(sc.players);
 	if(!st) {
-		log_write(ERROR_L, "Main: Error creating score table [errno: %d]\n", errno);
+		log_write(CRITICAL_L, "Main: Error creating score table [errno: %d]\n", errno);
 	}
 
+	tournament_set_tables(tm, pt, st);
+
 	// Launch court processes
-	for (i = 0; i < TOTAL_COURTS; i++) {
-		launch_court(i, pt, st);
+	for (i = 0; i < tm->total_courts; i++) {
+		launch_court(i, tm);
 	}
 	
-	// We create a referee to administrate the tournament!
-	// launch_referee(pt);
 
 	// No child proccess should end here
 	// ALL childs must finish with a exit(status) call.
 	// The only cleaning to be done by them is log_close(log)
 	if(getpid() != main_pid){
 		assert(false);
-		//log_write(INFO_L, "Proccess pid %d about to finish correctly \n", getpid());
-		//court_destroy(court);
-		//partners_table_destroy(pt);	
-		//log_close(log);
-		//return 0;
+		// Sanity check
 	}
 
+	lock_acquire(tm->tm_lock);
+	int sem_start = tm->tm_data->tm_init_sem;
+	lock_release(tm->tm_lock);
 
-	// Important note: Here main process is not waiting for referee!
-	for (i = 0; i < (TOTAL_PLAYERS + TOTAL_COURTS); i++) {
+	// Lock until at least MIN_PLAYERS_TO_START have posted on the semaphore
+	// (so the tournament starts when that many players have joined)
+	sem_take(sem_start, 0, MIN_PLAYERS_TO_START);
+	sem_put(sem_start, 1, sc.capacity);
+
+	bool courts_waken = false;
+	bool cut_condition = false;
+
+	for (i = 0; i < (sc.players + tm->total_courts + 1); i++) {
 		int status;
 		int pid = wait(&status);
 		int ret = WEXITSTATUS(status);
 		log_write(INFO_L, "Main: Proccess pid %d finished with exit status %d\n", pid, ret);
+		//print_tournament_status(tm);
+		
+		lock_acquire(tm->tm_lock);
+		int players_alive = tm->tm_data->tm_active_players;
+		lock_release(tm->tm_lock);
+
+		// Different cut condition based on player amount
+		// Totally empirical, must be the same as in court and player
+		if(sc.players > 20)
+			cut_condition = (players_alive <= (sc.players * 0.2));
+		else
+			cut_condition = (players_alive < 4);
+
+		if(cut_condition && (!courts_waken)) {
+			courts_waken = true;
+			log_write(INFO_L, "Main: Enough matches performed. Terminating processes!\n");
+			// Version 1 of ending
+			//for(j = 0; j < tm->total_courts; j++)
+			//	sem_post(tm->tm_data->tm_courts_sem, j);
+			// Version 2 of ending
+			kill(0, SIGTERM);
+		}
 	}
 
+	log_write(STAT_L, "Main: Tournament ended correctly \\o/\n");
+	print_tournament_results(tm);
+
 	partners_table_free_table(pt);
+	tournament_free(tm);
 	score_table_free_table(st);		
 
-	log_write(INFO_L, "Main: Tournament ended correctly \\o/\n");
 	log_close();
 	return 0;
 }

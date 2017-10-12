@@ -4,7 +4,7 @@
 #include <string.h>
 #include "confparser.h"
 
-/* Stores the value of the parameter recieved
+/* Stores the value of the parameter received
  * into the respective field of struct conf sc.*/
 void parse_value(struct conf* sc, char* param, size_t p_value){
 	if((!sc) || (!param)) return;
@@ -14,15 +14,25 @@ void parse_value(struct conf* sc, char* param, size_t p_value){
 		return;
 		}
 		
+	if(strcmp(param, "P") == 0) {
+		sc->players = p_value;
+		return;
+		}
+		
 	if(strcmp(param, "K") == 0) {
 		sc->matches = p_value;
 		return;
 		}
 		
+	if(strcmp(param, "D") == 0) {
+		sc->debug = (p_value == 0 ? false : true);
+		return;
+		}		
+		
 	if(strcmp(param, "C") == 0) {
 		sc->cols = p_value;
 		return;
-		}			
+		}				
 		
 	if(strcmp(param, "M") == 0) {
 		sc->capacity = p_value;
@@ -44,7 +54,7 @@ bool read_conf_file(struct conf* sc){
 	// For every line in pf, parse its value
 	while(r > 0){
 		char param[15];
-		size_t p_value;
+		size_t p_value = 0;
 		r = fscanf(pf, "%s : %d\n", param, &p_value);
 		if(r == 2) {
 			parse_value(sc, param, p_value);

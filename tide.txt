@@ -1,0 +1,24 @@
+/* Extra configuration file to manage the tide. Every line on
+this file is to be considered a "tide command" for the tide,
+where such command can be either "tide flow" (F) or "tide ebb" (E).
+The tide process will execute each line command, but only after 
+waiting some time (in microseconds) as such line indicates.
+The format for each line of the file must be:
+<Command letter (F or E)> : <time to wait before executing>
+where the spaces and the end of line are compulsory.*/
+F : 500000
+F : 660000
+E : 320000
+F : 456660
+E : 777770
+E : 500000
+E : 500000
+E : 500000
+E : 500000
+E : 500000
+F : 456660
+F : 456660
+F : 456660
+E : 500000
+E : 500000
+F : 456660

@@ -12,11 +12,21 @@
 #include "protocol.h"
 
 // Temporary
-#define TOTAL_PLAYERS 8
-#define TOTAL_COURTS 1
-#define NUM_MATCHES 3
-#define COURT_LIFE 6 // Change for cut-condition
 
+#define MAX_TIMES_KICKED 10
+
+#define SIG_SET SIGUSR1
+#define SIG_TIDE SIGUSR2
+
+// Numbre of player id which will be invalid
+// TODO: Change this for dynamic memory
+#define MAX_COURTS 200
+#define MAX_PLAYERS 200
+#define MIN_PLAYERS_TO_START 10
+#define INVALID_PLAYER_ID (MAX_PLAYERS + 8)
+
+#define PLAYERS_PER_MATCH 4
+#define PLAYERS_PER_TEAM (PLAYERS_PER_MATCH / 2)
 
 #define MAX_FIFO_NAME_LEN 50
 #define FIFO_CREAT_FLAGS (S_IFIFO | 0666)

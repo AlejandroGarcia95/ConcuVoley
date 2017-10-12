@@ -15,10 +15,13 @@
 
 #include "protocol.h"
 #include "semaphore.h"
+#include "tournament.h"
 
 // In microseconds!
-#define MIN_SCORE_TIME 15000
-#define MAX_SCORE_TIME 40000
+#define MIN_SCORE_TIME 900
+#define MAX_SCORE_TIME 3000
+
+#define MAX_ATTEMPTS 10
 
 /* Auxiliar function that generates a random
  * skill field for a new player. It returns a
@@ -65,8 +68,10 @@ player_t* player_create(){
 	// Initialize fields
 	player->skill = generate_random_skill();
 	player->matches_played = 0;
+	player->times_kicked = 0;
 	player->currently_playing = false;
 	player->id = 0;
+	player->tm = NULL;
 	return player;
 }
 
@@ -75,9 +80,14 @@ player_t* player_create(){
 void player_seppuku(bool release_res){
 	if(release_res){
 		player_t* player =  player_get_instance();
+		lock_acquire(player->tm->tm_lock);
+		player->tm->tm_data->tm_active_players--;
+		lock_release(player->tm->tm_lock);
+		
 		player_destroy(player);
 		log_close();
 	}
+
 	exit(-1);
 }
 
@@ -97,7 +107,11 @@ player_t* player_get_instance(){
 /* Destroys the received player.*/
 void player_destroy(){
 	player_t* player = player_get_instance();
-	if(player) free(player);
+	if (player) {
+		if (player->tm)
+			tournament_destroy(player->tm);
+	    free(player);
+	}
 }
 
 /* Set the name for the current player.
@@ -153,6 +167,25 @@ void handler_players_set(int signum) {
 		player_stop_playing();
 }
 
+// Version 2 of ending
+/* Handler function for SIGTERM signal*/
+void player_handler_termination(int signum) {
+	assert(signum == SIGTERM);
+	player_t* player = player_get_instance();
+	log_write(INFO_L, "Player %03d: No more matches can be played. Player decided to leave the tournament on his own!\n", player->id);
+	player_seppuku(true);
+}
+
+void player_set_termination_handler() {
+	// Set the hanlder for the SIGTERM signal
+	struct sigaction sa;
+	sigset_t sigset;	
+	sigemptyset(&sa.sa_mask);
+	sa.sa_flags = 0;
+	sa.sa_handler = player_handler_termination;
+	sigaction(SIGTERM, &sa, NULL);
+}
+
 void player_set_sigset_handler() {
 	// Set the hanlder for the SIG_SET signal
 	struct sigaction sa;
@@ -166,14 +199,7 @@ void player_set_sigset_handler() {
 void player_unset_sigset_handler() {
 	signal(SIG_SET, SIG_IGN);
 	return;
-/*	struct sigaction sa;
-	sigset_t sigset;	
-	sigemptyset(&sa.sa_mask);
-	sa.sa_flags = 0;
-	sa.sa_handler = NULL;
-	sigaction(SIG_SET, &sa, NULL);*/
 }
-
 
 /* Make this player play the current set
  * storing their score in the set_score
@@ -192,7 +218,6 @@ void player_play_set(unsigned long int* set_score){
 		(*set_score)++;
 	}
 }
-
 
 
 // TODO: documentation
@@ -230,14 +255,17 @@ void player_at_court(player_t* player, int court_fifo, int player_fifo) {
 			// but other players that arrived couldn't make a team with them.
 			// Hence, court kicked every player there
 			log_write(INFO_L, "Player %03d: Kicked from previously accepted court\n", player->id);
+			player->times_kicked++;
 			return;
 		} else {
-			log_write(INFO_L, "Player %03d: wont start playing\n", player->id);
+			log_write(INFO_L, "Player %03d: Wont start playing, received message %d\n", player->id, msg.m_type);
 			miss_count++;
-			if (miss_count >= 100) {
+			if (miss_count >= 2) {
 				// Have to really praise you for this
-				log_write(CRITICAL_L, "Player %03d: Have to shut down; wont start playing too many times (maybe deadlock)\n", player->id);
-				player_seppuku(true);
+				//log_write(CRITICAL_L, "Player %03d: Have to shut down; wont start playing too many times (maybe deadlock)\n", player->id);
+				//player_seppuku(true);
+				log_write(INFO_L, "Player %03d: Kicked from previously accepted court\n", player->id);
+				player->times_kicked++;
 			}
 		}
 	}
@@ -253,17 +281,10 @@ void player_join_court(player_t* player, unsigned int court_id) {
 	get_court_fifo_name(court_id, court_fifo_name);
 
 	// Get the court key!!
-	// TODO: change it so it grabs the key to the court it wanna join
-	int sem = sem_get(court_fifo_name, 1);
-	if (sem < 0)
-		log_write(ERROR_L, "Player %03d: Error opening the semaphore [errno: %d]\n", player->id, errno);
-
-	log_write(INFO_L, "Player %03d: Trying to wait on semaphore %d with name %s\n", player->id, sem, court_fifo_name);
-	if (sem_wait(sem, 0) < 0)
-		log_write(ERROR_L, "Player %03d: Error taking semaphore [errno: %d]\n", player->id, errno);
+	sem_post(player->tm->tm_data->tm_courts_sem, court_id);
 
 	player_set_sigset_handler();
-	log_write(INFO_L, "Player %03d: Took semaphore %d\n", player->id, sem);
+	log_write(DEBUG_L, "Player %03d: Took semaphore of court %03d\n", player->id, court_id);
 
 	// Joining lobby!!
 	char* p_name;
@@ -274,7 +295,7 @@ void player_join_court(player_t* player, unsigned int court_id) {
 		log_write(ERROR_L, "Player %03d: FIFO opening error for court %03d [errno: %d]\n", player->id, court_id, errno);
 		player_seppuku(true);
 	}
-	log_write(INFO_L, "Player %03d: Opened court %03d FIFO\n", player->id, court_id);
+	log_write(DEBUG_L, "Player %03d: Opened court %03d FIFO\n", player->id, court_id);
 
 	// Send "I want to play" message
 	message_t msg = {};
@@ -297,7 +318,7 @@ void player_join_court(player_t* player, unsigned int court_id) {
 		log_write(ERROR_L, "Player %03d: FIFO opening error for player [errno: %d]\n", player->id, errno);
 		player_seppuku(true);
 	}
-	log_write(INFO_L, "Player %03d: Opened self FIFO\n", player->id);
+	log_write(DEBUG_L, "Player %03d: Opened self FIFO\n", player->id);
 
 	// If accepted join court
 	if(!receive_msg(my_fifo, &msg)) {
@@ -305,11 +326,18 @@ void player_join_court(player_t* player, unsigned int court_id) {
 		player_seppuku(true);
 	}
 	// Received a msg!!
-	assert((msg.m_type == MSG_MATCH_ACCEPT) || (msg.m_type == MSG_MATCH_REJECT));
+	// TODO: qiq???
+	bool qiq = ((msg.m_type == MSG_MATCH_ACCEPT) || (msg.m_type == MSG_MATCH_REJECT));
+	if(!qiq) {
+		log_write(CRITICAL_L, "Player %03d: Message was %d\n", player->id, msg.m_type);
+		player_seppuku(true);
+	}
+
 	if (msg.m_type == MSG_MATCH_ACCEPT) {
 		player_at_court(player, court_fifo, my_fifo);
 	} else {
-		log_write(ERROR_L, "Player %03d: Player was rejected\n", player->id);
+		log_write(INFO_L, "Player %03d: Player was rejected from Court %03d\n", player->id, court_id);
+		player->times_kicked++;
 	}
 	player_unset_sigset_handler();
 
@@ -320,15 +348,15 @@ void player_join_court(player_t* player, unsigned int court_id) {
 
 
 	// Release semaphore
-	if (sem_post(sem, 0) < 0)
-		log_write(ERROR_L, "Player %03d: Error taking semaphore [errno: %d]\n", player->id, errno);
-	log_write(INFO_L, "Player %03d: Released semaphore\n", player->id);
+	// if (sem_post(sem, 0) < 0)
+	//	log_write(ERROR_L, "Player %03d: Error taking semaphore [errno: %d]\n", player->id, errno);
+	log_write(DEBUG_L, "Player %03d: Released semaphore of court %03d\n", player->id, court_id);
 
 }
 
 
-
 /*
+ * TODO: update documentation
  * The player who calls this function is willing to join a court. It will connect with
  * main controller and send a "Gimme a place to play" message.
  *
@@ -338,13 +366,49 @@ void player_join_court(player_t* player, unsigned int court_id) {
  *	  tells which court the player can join.
  *	- the message is of type MSG_TOURNAMENT_END, indicating no 
  *	  more matches will be played, and player should leave.
+ *
+ *
+ * LA POSTA: devuelve true si se pudo conectar a una cancha, false si no había ninguna disponible
  */
-void player_looking_for_court(player_t* player) {
+bool player_looking_for_court(player_t* player) {
 	log_write(INFO_L, "Player %03d: Looking for a court\n", player->id);
 
-	unsigned int court_id = 0;
+	// Search for a free court
+	int court_id = -1;
+	lock_acquire(player->tm->tm_lock);
 	
+	int i;
+	int best_so_far = -1;
+	int best_num_players = -1;
+	for (i = 0; i < player->tm->total_courts; i++) {
+		court_data_t cd = player->tm->tm_data->tm_courts[i];
+		
+		// Which criteria will the player use to join a court??
+		//	Should be: search for a court with most num_players which has room.
+		//		   if there is a tie, choose the first one.
+		if ((cd.court_status == TM_C_FREE) && (cd.court_num_players > best_num_players)) {
+			log_write(INFO_L, "Player %03d: checking for court %03d, and is %d with %d players\n", player->id, i, cd.court_status, cd.court_num_players);
+			best_so_far = i;
+			best_num_players = cd.court_num_players;
+		}
+	}
+	if ((best_so_far >= 0) && (player->tm->tm_data->tm_active_players >= PLAYERS_PER_MATCH)) {
+		court_data_t cd = player->tm->tm_data->tm_courts[best_so_far];
+		cd.court_players[cd.court_num_players] = player->id;
+		cd.court_num_players++;
+		if (cd.court_num_players == PLAYERS_PER_MATCH)
+			cd.court_status = TM_C_BUSY;
+		player->tm->tm_data->tm_courts[best_so_far] = cd;
+		court_id = best_so_far;
+		//log_write(CRITICAL_L, "Player %03d: Incremented court_num_players of court %03d, value is at %d\n", 
+		//				player->id, court_id, player->tm->tm_data->tm_courts[court_id].court_num_players);
+	}
+	lock_release(player->tm->tm_lock);
+
+	if (court_id < 0)
+		return false;
 	player_join_court(player, court_id);
+	return true;
 }
 
 
@@ -359,7 +423,7 @@ void player_looking_for_court(player_t* player) {
  * (as a set could end unexpectedly). At
  * the end of each set, the player must
  * send through the fifo their score.*/
-void player_main(unsigned int id) {
+void player_main(unsigned int id, tournament_t* tm) {
 	// Re-srand with a changed seed
 	srand(time(NULL) ^ (getpid() << 16));
 	char p_name[NAME_MAX_LENGTH];
@@ -369,32 +433,113 @@ void player_main(unsigned int id) {
 	if(!player)
 		player_seppuku(false);
 
+	player_set_termination_handler();
 	player->id = id;
 	player_set_name(p_name);
+	player->tm = tm;
 	
+	// Registering player info
+	lock_acquire(player->tm->tm_lock);
+	player->tm->tm_data->tm_players[id].player_num_matches = 0;
+	player->tm->tm_data->tm_players[id].player_pid = getpid();
+	strcpy(player->tm->tm_data->tm_players[id].player_name, p_name);
+	lock_release(player->tm->tm_lock);
+
 	log_write(INFO_L, "Player %03d: Launched as %s using PID: %d\n", player->id, p_name, getpid());
 	log_write(INFO_L, "Player %03d: Player skill is: %d\n", player->id, player_get_skill());
 	
-	// TODO: here player should decide whether to get into the stadium,
-	// leave if its already inside or look for a free court if it
-	// wants to play.
+//	unsigned long int t_rand = rand() % MAX_SECONDS_OUTSIDE + 0;
+//	sleep(t_rand);
+	log_write(INFO_L, "Player %03d: decided to enter the tournament\n", player->id);
+
+	lock_acquire(tm->tm_lock);
+	int sem_start = tm->tm_data->tm_init_sem;
+	lock_release(tm->tm_lock);
+
+	// Post the arrival to the main referee, then wait for the start tournament signal (so exciting!!)
+	sem_post(sem_start, 0);
+	sem_wait(sem_start, 1);
+	lock_acquire(tm->tm_lock);
+	tm->tm_data->tm_on_beach_players++;
+	lock_release(tm->tm_lock);
+	log_write(INFO_L, "Player %03d: Has entered the beach\n", player->id);
+
 	int i, r;
-	while(player->matches_played < NUM_MATCHES) {
-		player_looking_for_court(player);
+	bool cut_condition = false;
+	int attempts = 0;
+	while((player->matches_played < tm->num_matches) && (attempts < MAX_ATTEMPTS)) {
 		
-		// Wait some time before joining again
-		// TODO: Change for wait/broadcast or similar
+		lock_acquire(tm->tm_lock);
+		int players_alive = tm->tm_data->tm_active_players;
+		lock_release(tm->tm_lock);
+		
+		// Version 1 of ending
+		// Different cut condition based on player amount
+		// Totally empirical, must be the same as in main
+		/*if(tm->total_players > 20)
+			cut_condition = (players_alive <= (tm->total_players * 0.2));
+		else
+			cut_condition = (players_alive < 4);
+			
+		if(cut_condition)
+			break;
+		*/
+		
+		unsigned long int prob = rand() % 100;
+		if (prob < LEAVING_PROB) {
+			log_write(INFO_L, "Player %03d: Decided to leave the tournament on his own!\n", player->id);
+			sem_post(sem_start, 1);
+			lock_acquire(tm->tm_lock);
+			tm->tm_data->tm_on_beach_players--;
+			lock_release(tm->tm_lock);
+			break;
+		}
+
+		if (prob < RESTING_PROB) {
+			log_write(INFO_L, "Player %03d: Decided to leave the beach!\n", player->id);
+			sem_post(sem_start, 1);
+			lock_acquire(tm->tm_lock);
+			tm->tm_data->tm_on_beach_players--;
+			lock_release(tm->tm_lock);
+			unsigned long int t_rest = rand() % MAX_TIME_RESTING + 1000;
+			usleep(t_rest);
+			log_write(INFO_L, "Player %03d: Is back, wanting to enter the beach\n", player->id);
+			sem_wait(sem_start, 1);
+			lock_acquire(tm->tm_lock);
+			tm->tm_data->tm_on_beach_players++;
+			lock_release(tm->tm_lock);
+			log_write(INFO_L, "Player %03d: Has re-entered the beach successfully\n", player->id);
+			continue;
+		}
+
+		log_write(INFO_L, "Player %03d: Decided to play!\n", player->id);
+		if (!player_looking_for_court(player))
+			attempts++;
+		else
+			attempts = 0;
+		
+		// Sad end for player: leaves when nobody loves him 
+		if (player->times_kicked == MAX_TIMES_KICKED) {
+			log_write(INFO_L, "Player %03d: Kicked too many times. Giving up!\n", player->id);
+			break;
+		}
+		
+		// Wait some time before doing anything
 		unsigned long int t_rand = rand() % 2000000;
 		usleep(t_rand);
 	}
 	
+	sem_post(sem_start, 1);
+	lock_acquire(player->tm->tm_lock);
+	player->tm->tm_data->tm_active_players--;
+	tm->tm_data->tm_on_beach_players--;
+	lock_release(player->tm->tm_lock);
 
 	log_write(INFO_L, "Player %03d: Now leaving\n", player->id);
 	player_destroy(player);
 	log_close();
 	exit(0);
 	return; 
-	// Beware! Returns to main!
 }
 
 
