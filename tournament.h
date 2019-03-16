@@ -95,5 +95,5 @@ void tournament_init(tournament_t* tm, struct conf sc);
 void tournament_shmrm(tournament_t* tm);
 void tournament_destroy(tournament_t* tm);
 void tournament_set_tables(tournament_t* tm, partners_table_t* pt, score_table_t* st);
-
+void tournament_free(tournament_t* tm);
 #endif // TOURNAMENT_H

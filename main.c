@@ -25,6 +25,8 @@
 #include "tournament.h"
 #include "tide.h"
 
+// #include "longstrider.h"
+
 /* Returns negative in case of error!*/
 int main_init(tournament_t* tm, struct conf sc){
 	srand(time(NULL));
@@ -249,6 +251,9 @@ void print_tournament_results(tournament_t* tm) {
 
 
 int main(int argc, char **argv){
+	
+	// longstrider_write("Main", "start");
+	
 	// "Remember who you are and where you come from; 
 	// otherwise, you don't know where you are going."
 	pid_t main_pid = getpid();
@@ -350,5 +355,6 @@ int main(int argc, char **argv){
 	score_table_free_table(st);		
 
 	log_close();
+	// longstrider_write("Main", "finish");
 	return 0;
 }

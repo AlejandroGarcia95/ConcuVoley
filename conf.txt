@@ -10,10 +10,10 @@ F : 2
 // C defines columns. Note F*C defines amount of courts (former TOTAL_COURTS)
 C : 2
 // K defines number of matches (former NUM_MATCHES)
-K : 6
+K : 4
 // M defines the beach capacity
-M : 18
+M : 8
 // P defines amount of players (former TOTAL_PLAYERS)
-P : 19
+P : 11
 // Set D in order to activate debug mode
 D : 0
