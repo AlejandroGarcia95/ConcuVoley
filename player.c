@@ -18,6 +18,8 @@
 #include "semaphore.h"
 #include "tournament.h"
 
+// @loginclude
+
 // In microseconds!
 #define MIN_SCORE_TIME 900
 #define MAX_SCORE_TIME 3000
@@ -202,7 +204,7 @@ void player_unset_sigset_handler() {
 void player_play_set(unsigned long int* set_score){
 	player_t* player = player_get_instance();
 	if(!player) return;
-	// @log Player player->id play_set
+	// @log play_set player->id
 	while(player_is_playing()){
 		emulate_score_time();
 		(*set_score)++;
@@ -213,7 +215,7 @@ void player_play_set(unsigned long int* set_score){
 /* Call this function once player has found a court to join.
  * Makes the player play every set and leave when necessary.*/
 void player_at_court(player_t* player, int court_fifo, int player_fifo) {
-	// @log Player player->id waiting_at_court
+	// @log waiting_at_court player->id
 	message_t msg = {};
 	char* p_name = player->name;
 	while(msg.m_type != MSG_MATCH_END){
@@ -246,7 +248,7 @@ void player_at_court(player_t* player, int court_fifo, int player_fifo) {
 			// but other players that arrived couldn't make a team with them.
 			// Hence, court kicked every player there
 			log_write(INFO_L, "Player %03d: Kicked from previously accepted court\n", player->id);
-			// @log Player player->id couldnt_make_team_at_court
+			// @log couldnt_make_team_at_court player->id 
 			player->times_kicked++;
 			return;
 		} else {
@@ -254,13 +256,13 @@ void player_at_court(player_t* player, int court_fifo, int player_fifo) {
 			miss_count++;
 			if (miss_count >= 2) {
 				log_write(INFO_L, "Player %03d: Kicked from previously accepted court\n", player->id);
-				// @log Player player->id couldnt_make_team_at_court
+				// @log couldnt_make_team_at_court player->id
 				player->times_kicked++;
 			}
 		}
 	}
 	
-	// @log Player player->id finish_match
+	// @log finish_match player->id
 	if(msg.m_type == MSG_MATCH_END) // Not needed for now, but good sanity check
 		player->matches_played++;
 }
@@ -272,7 +274,7 @@ void player_at_court(player_t* player, int court_fifo, int player_fifo) {
  * court found), or with the player joining the court, calling the
  * function player_at_court.*/
 void player_join_court(player_t* player, unsigned int court_id) {
-	// @log Player player->id found_court court_id
+	// @log found_court player->id  court_id
 	log_write(INFO_L, "Player %03d: Found court %03d, attempting to join\n", player->id, court_id);
 	char court_fifo_name[MAX_FIFO_NAME_LEN];
 	get_court_fifo_name(court_id, court_fifo_name);
@@ -334,7 +336,7 @@ void player_join_court(player_t* player, unsigned int court_id) {
 		player_at_court(player, court_fifo, my_fifo);
 	} else {
 		log_write(INFO_L, "Player %03d: Player was rejected from Court %03d\n", player->id, court_id);
-		// @log Player player->id kicked_from_court court_id
+		// @log kicked_from_court player->id court_id
 		player->times_kicked++;
 	}
 	player_unset_sigset_handler();
@@ -353,7 +355,7 @@ void player_join_court(player_t* player, unsigned int court_id) {
  * Returns true if could found a court. */
 bool player_looking_for_court(player_t* player) {
 	log_write(INFO_L, "Player %03d: Looking for a court\n", player->id);
-	// @log Player player->id looking_court
+	// @log looking_court player->id
 
 	// Search for a free court
 	int court_id = -1;
@@ -445,7 +447,7 @@ void player_main(unsigned int id, tournament_t* tm) {
 		unsigned long int prob = rand() % 100;
 		if (prob < LEAVING_PROB) {
 			log_write(INFO_L, "Player %03d: Decided to leave the tournament on his own!\n", player->id);
-			// @log Player player->id leave_tournament
+			// @log leave_tournament player->id
 			sem_post(sem_start, 1);
 			lock_acquire(tm->tm_lock);
 			tm->tm_data->tm_on_beach_players--;
@@ -455,7 +457,7 @@ void player_main(unsigned int id, tournament_t* tm) {
 
 		if (prob < RESTING_PROB) {
 			log_write(INFO_L, "Player %03d: Decided to leave the beach!\n", player->id);
-			// @log Player player->id leave_beach
+			// @log leave_beach player->id
 			sem_post(sem_start, 1);
 			lock_acquire(tm->tm_lock);
 			tm->tm_data->tm_on_beach_players--;
@@ -468,7 +470,7 @@ void player_main(unsigned int id, tournament_t* tm) {
 			tm->tm_data->tm_on_beach_players++;
 			lock_release(tm->tm_lock);
 			log_write(INFO_L, "Player %03d: Has re-entered the beach successfully\n", player->id);
-			// @log Player player->id enter_beach
+			// @log enter_beach player->id
 			continue;
 		}
 
@@ -496,8 +498,8 @@ void player_main(unsigned int id, tournament_t* tm) {
 	lock_release(player->tm->tm_lock);
 
 	log_write(INFO_L, "Player %03d: Now leaving\n", player->id);
-	// @log Player player->id leave_beach
-	// @log Player player->id leave_tournament
+	// @log leave_beach player->id
+	// @log leave_tournament player->id
 	player_destroy(player);
 	log_close();
 	exit(0);
